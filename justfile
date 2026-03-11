@@ -9,7 +9,7 @@
 #
 # When running outside a devcontainer:
 #   - Builds/uses local devcontainer image with `just` pre-installed
-#   - Podman mounts justfile.container as /workspace/examples/go/justfile
+#   - Podman mounts justfile.container as /workspace/justfile
 #   - `just build` on host → podman runs → `just build` in container → `go build ./...`
 #
 # When running inside a devcontainer (DEVCONTAINER=true):
@@ -18,13 +18,13 @@
 
 set shell := ["bash", "-c"]
 
-TOP := `git rev-parse --show-toplevel`
+ROOT := `git rev-parse --show-toplevel`
 IMAGE := "angzarr-go-dev"
 
 # Build the devcontainer image
 [private]
 _build-image:
-    podman build --network=host -t {{IMAGE}} -f "{{TOP}}/examples/go/.devcontainer/Containerfile" "{{TOP}}/examples/go/.devcontainer"
+    podman build --network=host -t {{IMAGE}} -f "{{ROOT}}/.devcontainer/Containerfile" "{{ROOT}}/.devcontainer"
 
 # Run just target in container (or directly if already in devcontainer)
 [private]
@@ -34,9 +34,9 @@ _container +ARGS: _build-image
         just {{ARGS}}
     else
         podman run --rm --network=host \
-            -v "{{TOP}}:/workspace:Z" \
-            -v "{{TOP}}/examples/go/justfile.container:/workspace/examples/go/justfile:ro" \
-            -w /workspace/examples/go \
+            -v "{{ROOT}}:/workspace:Z" \
+            -v "{{ROOT}}/justfile.container:/workspace/justfile:ro" \
+            -w /workspace \
             {{IMAGE}} just {{ARGS}}
     fi
 
@@ -62,11 +62,11 @@ lint:
 
 # Run poker in standalone mode (host - needs Rust)
 run: build
-    mkdir -p "{{TOP}}/examples/go/data"
-    cd "{{TOP}}" && cargo run \
+    mkdir -p "{{ROOT}}/data"
+    cd "{{ROOT}}" && cargo run \
         --bin angzarr-standalone \
         --features standalone,sqlite \
         -- --config examples/go/standalone.yaml
 
 clean:
-    rm -rf "{{TOP}}/examples/go/data"
+    rm -rf "{{ROOT}}/data"
