@@ -72,7 +72,7 @@ func (pm *HandFlowPM) handleHandStarted(
 	trigger *pb.EventBook,
 	state *PMState,
 	event *examples.HandStarted,
-	dests []*pb.EventBook,
+	dests *angzarr.Destinations,
 ) ([]*pb.CommandBook, *pb.EventBook, error) {
 	// Initialize hand process (not persisted in this simplified version).
 	// The saga-table-hand will send DealCards, so we don't emit commands here.
@@ -84,7 +84,7 @@ func (pm *HandFlowPM) handleCardsDealt(
 	trigger *pb.EventBook,
 	state *PMState,
 	event *examples.CardsDealt,
-	dests []*pb.EventBook,
+	dests *angzarr.Destinations,
 ) ([]*pb.CommandBook, *pb.EventBook, error) {
 	// Post small blind command.
 	// In a real implementation, we'd track state to know which blind to post.
@@ -97,7 +97,7 @@ func (pm *HandFlowPM) handleBlindPosted(
 	trigger *pb.EventBook,
 	state *PMState,
 	event *examples.BlindPosted,
-	dests []*pb.EventBook,
+	dests *angzarr.Destinations,
 ) ([]*pb.CommandBook, *pb.EventBook, error) {
 	// In a full implementation, we'd check if both blinds are posted
 	// and then start the betting round.
@@ -109,7 +109,7 @@ func (pm *HandFlowPM) handleActionTaken(
 	trigger *pb.EventBook,
 	state *PMState,
 	event *examples.ActionTaken,
-	dests []*pb.EventBook,
+	dests *angzarr.Destinations,
 ) ([]*pb.CommandBook, *pb.EventBook, error) {
 	// In a full implementation, we'd check if betting is complete
 	// and advance to the next phase.
@@ -121,7 +121,7 @@ func (pm *HandFlowPM) handleCommunityDealt(
 	trigger *pb.EventBook,
 	state *PMState,
 	event *examples.CommunityCardsDealt,
-	dests []*pb.EventBook,
+	dests *angzarr.Destinations,
 ) ([]*pb.CommandBook, *pb.EventBook, error) {
 	// Start new betting round after community cards.
 	return nil, nil, nil
@@ -132,7 +132,7 @@ func (pm *HandFlowPM) handlePotAwarded(
 	trigger *pb.EventBook,
 	state *PMState,
 	event *examples.PotAwarded,
-	dests []*pb.EventBook,
+	dests *angzarr.Destinations,
 ) ([]*pb.CommandBook, *pb.EventBook, error) {
 	// Hand is complete. Clean up.
 	return nil, nil, nil
