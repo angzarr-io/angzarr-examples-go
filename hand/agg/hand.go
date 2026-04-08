@@ -275,15 +275,6 @@ func (h *Hand) getPlayerByRoot(root []byte) *PlayerHandState {
 	return h.State().Players[hex.EncodeToString(root)]
 }
 
-func (h *Hand) getPlayerByPosition(pos int32) *PlayerHandState {
-	for _, p := range h.State().Players {
-		if p.Position == pos {
-			return p
-		}
-	}
-	return nil
-}
-
 // --- Command Handlers ---
 
 func (h *Hand) dealCards(cmd *examples.DealCards) (*examples.CardsDealt, error) {
@@ -302,7 +293,7 @@ func (h *Hand) dealCards(cmd *examples.DealCards) (*examples.CardsDealt, error) 
 	seed := cmd.DeckSeed
 	if len(seed) == 0 {
 		seed = make([]byte, 32)
-		rand.Read(seed)
+		_, _ = rand.Read(seed)
 	}
 	shuffleDeck(deck, seed)
 

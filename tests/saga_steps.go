@@ -21,7 +21,6 @@ type SagaContext struct {
 	winners         []*examples.PotWinner
 	stackChanges    map[string]int64
 	resultCommands  []*pb.CommandBook
-	lastError       error
 	eventBook       *pb.EventBook
 	sagaRouterSagas []string
 	handledBy       []string
@@ -198,7 +197,7 @@ func activePlayersTable(table *godog.Table) error {
 	// Update the HandStarted event with active players
 	if sagaCtx.sourceEvent != nil && sagaCtx.sourceEvent.MessageIs(&examples.HandStarted{}) {
 		var hs examples.HandStarted
-		sagaCtx.sourceEvent.UnmarshalTo(&hs)
+		_ = sagaCtx.sourceEvent.UnmarshalTo(&hs)
 		hs.ActivePlayers = sagaCtx.activePlayers
 		sagaCtx.sourceEvent, _ = anypb.New(&hs)
 	}
@@ -221,12 +220,12 @@ func winnersTable(table *godog.Table) error {
 	if sagaCtx.sourceEvent != nil {
 		if sagaCtx.sourceEvent.MessageIs(&examples.HandComplete{}) {
 			var hc examples.HandComplete
-			sagaCtx.sourceEvent.UnmarshalTo(&hc)
+			_ = sagaCtx.sourceEvent.UnmarshalTo(&hc)
 			hc.Winners = sagaCtx.winners
 			sagaCtx.sourceEvent, _ = anypb.New(&hc)
 		} else if sagaCtx.sourceEvent.MessageIs(&examples.PotAwarded{}) {
 			var pa examples.PotAwarded
-			sagaCtx.sourceEvent.UnmarshalTo(&pa)
+			_ = sagaCtx.sourceEvent.UnmarshalTo(&pa)
 			pa.Winners = sagaCtx.winners
 			sagaCtx.sourceEvent, _ = anypb.New(&pa)
 		}
@@ -248,7 +247,7 @@ func stackChangesTable(table *godog.Table) error {
 	// Update HandEnded with stack_changes
 	if sagaCtx.sourceEvent != nil && sagaCtx.sourceEvent.MessageIs(&examples.HandEnded{}) {
 		var he examples.HandEnded
-		sagaCtx.sourceEvent.UnmarshalTo(&he)
+		_ = sagaCtx.sourceEvent.UnmarshalTo(&he)
 		he.StackChanges = make(map[string]int64)
 		for k, v := range sagaCtx.stackChanges {
 			he.StackChanges[k] = v
@@ -345,7 +344,7 @@ func theSagaHandlesTheEvent() error {
 func handleTableSyncSaga() error {
 	if sagaCtx.sourceEvent.MessageIs(&examples.HandStarted{}) {
 		var hs examples.HandStarted
-		sagaCtx.sourceEvent.UnmarshalTo(&hs)
+		_ = sagaCtx.sourceEvent.UnmarshalTo(&hs)
 
 		players := make([]*examples.PlayerInHand, len(hs.ActivePlayers))
 		for i, seat := range hs.ActivePlayers {
@@ -371,7 +370,7 @@ func handleTableSyncSaga() error {
 		})
 	} else if sagaCtx.sourceEvent.MessageIs(&examples.HandComplete{}) {
 		var hc examples.HandComplete
-		sagaCtx.sourceEvent.UnmarshalTo(&hc)
+		_ = sagaCtx.sourceEvent.UnmarshalTo(&hc)
 
 		results := make([]*examples.PotResult, len(hc.Winners))
 		for i, w := range hc.Winners {
@@ -398,7 +397,7 @@ func handleTableSyncSaga() error {
 func handleHandResultsSaga() error {
 	if sagaCtx.sourceEvent.MessageIs(&examples.HandEnded{}) {
 		var he examples.HandEnded
-		sagaCtx.sourceEvent.UnmarshalTo(&he)
+		_ = sagaCtx.sourceEvent.UnmarshalTo(&he)
 
 		for playerKey := range he.StackChanges {
 			cmd := &examples.ReleaseFunds{
@@ -413,7 +412,7 @@ func handleHandResultsSaga() error {
 		}
 	} else if sagaCtx.sourceEvent.MessageIs(&examples.PotAwarded{}) {
 		var pa examples.PotAwarded
-		sagaCtx.sourceEvent.UnmarshalTo(&pa)
+		_ = sagaCtx.sourceEvent.UnmarshalTo(&pa)
 
 		for _, winner := range pa.Winners {
 			cmd := &examples.DepositFunds{
@@ -442,10 +441,9 @@ func theRouterRoutesTheEvent() error {
 		if sagaName == "TableSyncSaga" && sagaCtx.sourceEvent.MessageIs(&examples.HandStarted{}) {
 			sagaCtx.handledBy = append(sagaCtx.handledBy, sagaName)
 			sagaCtx.sagaType = "TableSyncSaga"
-			handleTableSyncSaga()
-		} else if sagaName == "HandResultsSaga" {
-			// HandResultsSaga doesn't handle HandStarted
+			_ = handleTableSyncSaga()
 		}
+		// HandResultsSaga doesn't handle HandStarted, so no action needed
 	}
 	return nil
 }
@@ -459,7 +457,7 @@ func theRouterRoutesTheEvents() error {
 		for _, sagaName := range sagaCtx.sagaRouterSagas {
 			if sagaName == "TableSyncSaga" && sagaCtx.sourceEvent.MessageIs(&examples.HandStarted{}) {
 				sagaCtx.sagaType = "TableSyncSaga"
-				handleTableSyncSaga()
+				_ = handleTableSyncSaga()
 			}
 		}
 	}
@@ -541,7 +539,7 @@ func theCommandHasGameVariantTexasHoldem() error {
 		return fmt.Errorf("no commands")
 	}
 	var dc examples.DealCards
-	sagaCtx.resultCommands[0].Pages[0].GetCommand().UnmarshalTo(&dc)
+	_ = sagaCtx.resultCommands[0].Pages[0].GetCommand().UnmarshalTo(&dc)
 	if dc.GameVariant != examples.GameVariant_TEXAS_HOLDEM {
 		return fmt.Errorf("expected TEXAS_HOLDEM, got %v", dc.GameVariant)
 	}
@@ -553,7 +551,7 @@ func theCommandHasPlayers(count int) error {
 		return fmt.Errorf("no commands")
 	}
 	var dc examples.DealCards
-	sagaCtx.resultCommands[0].Pages[0].GetCommand().UnmarshalTo(&dc)
+	_ = sagaCtx.resultCommands[0].Pages[0].GetCommand().UnmarshalTo(&dc)
 	if len(dc.Players) != count {
 		return fmt.Errorf("expected %d players, got %d", count, len(dc.Players))
 	}
@@ -565,7 +563,7 @@ func theCommandHasHandNumber(num int) error {
 		return fmt.Errorf("no commands")
 	}
 	var dc examples.DealCards
-	sagaCtx.resultCommands[0].Pages[0].GetCommand().UnmarshalTo(&dc)
+	_ = sagaCtx.resultCommands[0].Pages[0].GetCommand().UnmarshalTo(&dc)
 	if dc.HandNumber != int64(num) {
 		return fmt.Errorf("expected hand_number %d, got %d", num, dc.HandNumber)
 	}
@@ -577,7 +575,7 @@ func theCommandHasResult(count int) error {
 		return fmt.Errorf("no commands")
 	}
 	var eh examples.EndHand
-	sagaCtx.resultCommands[0].Pages[0].GetCommand().UnmarshalTo(&eh)
+	_ = sagaCtx.resultCommands[0].Pages[0].GetCommand().UnmarshalTo(&eh)
 	if len(eh.Results) != count {
 		return fmt.Errorf("expected %d results, got %d", count, len(eh.Results))
 	}
@@ -589,7 +587,7 @@ func theResultHasWinnerWithAmount(playerName string, amount int) error {
 		return fmt.Errorf("no commands")
 	}
 	var eh examples.EndHand
-	sagaCtx.resultCommands[0].Pages[0].GetCommand().UnmarshalTo(&eh)
+	_ = sagaCtx.resultCommands[0].Pages[0].GetCommand().UnmarshalTo(&eh)
 
 	for _, r := range eh.Results {
 		if r.Amount == int64(amount) {
@@ -604,7 +602,7 @@ func theFirstCommandHasAmountFor(amount int, playerName string) error {
 		return fmt.Errorf("no commands")
 	}
 	var df examples.DepositFunds
-	sagaCtx.resultCommands[0].Pages[0].GetCommand().UnmarshalTo(&df)
+	_ = sagaCtx.resultCommands[0].Pages[0].GetCommand().UnmarshalTo(&df)
 	if df.Amount.Amount != int64(amount) {
 		return fmt.Errorf("expected amount %d, got %d", amount, df.Amount.Amount)
 	}
@@ -616,7 +614,7 @@ func theSecondCommandHasAmountFor(amount int, playerName string) error {
 		return fmt.Errorf("need at least 2 commands")
 	}
 	var df examples.DepositFunds
-	sagaCtx.resultCommands[1].Pages[0].GetCommand().UnmarshalTo(&df)
+	_ = sagaCtx.resultCommands[1].Pages[0].GetCommand().UnmarshalTo(&df)
 	if df.Amount.Amount != int64(amount) {
 		return fmt.Errorf("expected amount %d, got %d", amount, df.Amount.Amount)
 	}
@@ -648,12 +646,12 @@ func parseUUID(s string) []byte {
 
 func parseInt32(s string) int32 {
 	var v int32
-	fmt.Sscanf(s, "%d", &v)
+	_, _ = fmt.Sscanf(s, "%d", &v)
 	return v
 }
 
 func parseInt64(s string) int64 {
 	var v int64
-	fmt.Sscanf(s, "%d", &v)
+	_, _ = fmt.Sscanf(s, "%d", &v)
 	return v
 }

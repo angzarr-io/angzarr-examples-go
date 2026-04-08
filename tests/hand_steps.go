@@ -410,7 +410,7 @@ func (hc *HandContext) flopDealt() error {
 }
 
 func (hc *HandContext) flopAndTurnDealt() error {
-	hc.communityCardsDealtFlop()
+	_ = hc.communityCardsDealtFlop()
 
 	turnEvent := &examples.CommunityCardsDealt{
 		Cards:             createHoleCards(1),
@@ -424,8 +424,8 @@ func (hc *HandContext) flopAndTurnDealt() error {
 }
 
 func (hc *HandContext) completedBettingTexasHoldem(playerCount int) error {
-	hc.cardsDealtTexasHoldem(playerCount)
-	hc.blindsPostedWithPot(30)
+	_ = hc.cardsDealtTexasHoldem(playerCount)
+	_ = hc.blindsPostedWithPot(30)
 	return nil
 }
 
@@ -498,11 +498,11 @@ func (hc *HandContext) playerFolded(playerName string) error {
 }
 
 func (hc *HandContext) showdownWithHands(table *godog.Table) error {
-	hc.showdownStarted()
+	_ = hc.showdownStarted()
 	for _, row := range table.Rows[1:] {
 		playerName := row.Cells[0].Value
 		ranking := row.Cells[1].Value
-		hc.cardsRevealedForPlayer(playerName, ranking)
+		_ = hc.cardsRevealedForPlayer(playerName, ranking)
 	}
 	return nil
 }
