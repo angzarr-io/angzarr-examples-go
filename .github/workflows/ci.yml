@@ -276,6 +276,7 @@ jobs:
             --set "applications.sagas[0].image.tag=${TAG}" \
             --set "applications.sagas[1].image.tag=${TAG}" \
             --set "applications.sagas[2].image.tag=${TAG}" \
+            --set "applications.sagas[3].image.tag=${TAG}" \
             --set "applications.processManagers[0].image.tag=${TAG}" \
             --set "applications.projectors[0].image.tag=${TAG}" \
             --namespace angzarr-test \
