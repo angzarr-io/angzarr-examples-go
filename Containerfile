@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.4
 # Go poker examples - optimized multi-stage build
-# Build: podman build -t go-poker-player --target agg-player -f examples/go/Containerfile .
+# Build: podman build -t go-poker-player --target agg-player -f Containerfile .
 # Multi-arch: podman build --platform linux/amd64,linux/arm64 ...
-# Context must be repo root for proto access
+# Context is the repo root
 #
 # Optimizations:
 # 1. Shared deps-fetcher stage - go mod download runs once
@@ -29,12 +29,11 @@ FROM docker.io/bufbuild/buf:1.47.2 AS proto-gen
 WORKDIR /app
 
 # Copy proto files and buf config
-COPY proto ./proto
+COPY angzarr-project/proto ./angzarr-project/proto
+COPY buf.gen.yaml ./buf.gen.yaml
 
-WORKDIR /app/proto
-
-# Generate Go proto files (output: ../client/go/proto/)
-RUN buf generate --template buf.gen.go.yaml
+# Generate Go proto files (output: angzarr-client-go/proto/)
+RUN buf generate
 
 # ============================================================================
 # Deps fetcher - downloads ALL dependencies once
@@ -45,17 +44,14 @@ WORKDIR /app
 
 # Copy client library (local dependency via go.mod replace directive)
 # The replace directive is: replace ... => ./angzarr-client-go
-# From /app/examples/go, that resolves to /app/client/go
-COPY client/go ./client/go
+COPY angzarr-client-go ./angzarr-client-go
 
 # Copy generated proto files from proto-gen stage
 # These are gitignored locally but needed for the build
-COPY --from=proto-gen /app/client/go/proto ./client/go/proto
+COPY --from=proto-gen /app/angzarr-client-go/proto ./angzarr-client-go/proto
 
 # Copy go.mod/go.sum for dependency resolution
-COPY examples/go/go.mod examples/go/go.sum ./examples/go/
-
-WORKDIR /app/examples/go
+COPY go.mod go.sum ./
 
 # Download dependencies with persistent cache
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
@@ -65,22 +61,22 @@ RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
 # Aggregate builds - each builds a static binary
 # ============================================================================
 FROM deps-fetcher AS build-player
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./player/agg
 
 FROM deps-fetcher AS build-table
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./table/agg
 
 FROM deps-fetcher AS build-hand
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./hand/agg
@@ -89,29 +85,29 @@ RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
 # Saga builds
 # ============================================================================
 FROM deps-fetcher AS build-saga-table-hand
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./table/saga-hand
 
 FROM deps-fetcher AS build-saga-table-player
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./table/saga-player
 
 FROM deps-fetcher AS build-saga-hand-table
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./hand/saga-table
 
 FROM deps-fetcher AS build-saga-hand-player
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./hand/saga-player
@@ -120,8 +116,8 @@ RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
 # Process Manager build
 # ============================================================================
 FROM deps-fetcher AS build-pmg-hand-flow
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./pmg-hand-flow
@@ -130,8 +126,8 @@ RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
 # Projector build
 # ============================================================================
 FROM deps-fetcher AS build-prj-output
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./prj-output
@@ -213,64 +209,64 @@ ENTRYPOINT ["./server"]
 # Debug builds - with debug symbols (no -ldflags stripping)
 # ============================================================================
 FROM deps-fetcher AS build-player-debug
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./player/agg
 
 FROM deps-fetcher AS build-table-debug
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./table/agg
 
 FROM deps-fetcher AS build-hand-debug
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./hand/agg
 
 FROM deps-fetcher AS build-saga-table-hand-debug
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./table/saga-hand
 
 FROM deps-fetcher AS build-saga-table-player-debug
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./table/saga-player
 
 FROM deps-fetcher AS build-saga-hand-table-debug
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./hand/saga-table
 
 FROM deps-fetcher AS build-saga-hand-player-debug
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./hand/saga-player
 
 FROM deps-fetcher AS build-pmg-hand-flow-debug
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./pmg-hand-flow
 
 FROM deps-fetcher AS build-prj-output-debug
-WORKDIR /app/examples/go
-COPY examples/go/ ./
+WORKDIR /app
+COPY . ./
 RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
     --mount=type=cache,id=go-build-cache,target=/root/.cache/go-build,sharing=locked \
     CGO_ENABLED=0 go build -gcflags="all=-N -l" -o /out/server ./prj-output
