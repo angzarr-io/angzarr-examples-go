@@ -43,6 +43,10 @@ jobs:
       - name: Test (unit)
         run: just -f justfile.container test-unit
 
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin v1.64.8
+
       - name: Lint
         run: just -f justfile.container lint
 
