@@ -1,6 +1,6 @@
 version: v2
 inputs:
-  - module: buf.build/angzarr/angzarr
+  - module: buf.build/angzarr/angzarr:0.5.0
   - directory: angzarr-project/proto  # Local poker domain protos
     exclude_paths:
       - angzarr-project/proto/examples/ai_player.proto

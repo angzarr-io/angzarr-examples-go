@@ -68,6 +68,11 @@ func (s *HandPlayerSaga) handlePotAwarded(
 	return commands, nil
 }
 
+// Handle satisfies the OOSaga interface (destinations parameter added in 0.5.0).
+func (s *HandPlayerSaga) Handle(source *pb.EventBook, _ *angzarr.Destinations) (*angzarr.SagaHandlerResponse, error) {
+	return s.SagaBase.Handle(source)
+}
+
 func main() {
 	saga := NewHandPlayerSaga()
 	angzarr.RunOOSagaServer("saga-hand-player", "50215", saga)
