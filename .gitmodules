@@ -1,3 +1,6 @@
 [submodule "angzarr-client-go"]
 	path = angzarr-client-go
 	url = https://github.com/angzarr-io/angzarr-client-go.git
+[submodule "angzarr-project"]
+	path = angzarr-project
+	url = https://github.com/angzarr-io/angzarr-project.git
