@@ -109,10 +109,23 @@ jobs:
           context: .
           file: ./Containerfile
           target: ${{ matrix.target }}
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
           tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Export image for acceptance tests
+        if: github.event_name == 'pull_request'
+        run: docker save -o /tmp/${{ matrix.target }}.tar "${{ steps.tags.outputs.tags }}"
+
+      - name: Upload image artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.target }}
+          path: /tmp/${{ matrix.target }}.tar
+          retention-days: 1
 
   # =============================================================================
   # STAGE 3: ACCEPTANCE TESTS
@@ -191,7 +204,23 @@ jobs:
             kind load docker-image "$img" --name angzarr-test
           done
 
-      - name: Pull and load example images
+      - name: Download image artifacts
+        if: github.event_name == 'pull_request'
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/images
+          pattern: image-*
+
+      - name: Load example images into Kind (PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          for tarball in /tmp/images/image-*/*.tar; do
+            echo "Loading $tarball..."
+            kind load image-archive "$tarball" --name angzarr-test
+          done
+
+      - name: Pull and load example images (push)
+        if: github.event_name != 'pull_request'
         env:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
@@ -231,7 +260,7 @@ jobs:
           COORD_VER: ${{ env.COORDINATOR_VERSION }}
         run: |
           helm upgrade --install poker oci://ghcr.io/angzarr-io/charts/angzarr \
-            --version 0.2.2 \
+            --version 0.5.0 \
             -f deploy/k8s/helm/values.yaml \
             -f deploy/k8s/helm/values-ci.yaml \
             --set images.aggregate.tag="${COORD_VER}" \
