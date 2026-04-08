@@ -245,11 +245,11 @@ jobs:
       - name: Deploy infrastructure
         run: |
           echo "Deploying PostgreSQL..."
-          helm upgrade --install postgres oci://ghcr.io/angzarr-io/charts/angzarr-db-postgres-simple \
+          helm upgrade --install angzarr-db oci://ghcr.io/angzarr-io/charts/angzarr-db-postgres-simple \
             --namespace angzarr-test \
             --wait --timeout 2m
           echo "Deploying RabbitMQ..."
-          helm upgrade --install rabbitmq oci://ghcr.io/angzarr-io/charts/angzarr-mq-rabbitmq-simple \
+          helm upgrade --install angzarr-mq oci://ghcr.io/angzarr-io/charts/angzarr-mq-rabbitmq-simple \
             --namespace angzarr-test \
             --wait --timeout 3m
           echo "Infrastructure deployed"
