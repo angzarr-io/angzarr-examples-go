@@ -254,6 +254,15 @@ jobs:
             --wait --timeout 3m
           echo "Infrastructure deployed"
 
+      - name: Create gateway descriptor configmap
+        run: |
+          cd angzarr-project/proto
+          buf build -o /tmp/types.bin
+          cd ../..
+          kubectl create configmap gateway-descriptor \
+            --from-file=types.bin=/tmp/types.bin \
+            --namespace angzarr-test
+
       - name: Deploy applications
         env:
           TAG: ${{ steps.tag.outputs.tag }}
