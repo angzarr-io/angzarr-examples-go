@@ -336,6 +336,46 @@ jobs:
 
           echo "Smoke test passed - all pods running, gateway reachable"
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: go.sum
+
+      - name: Wait for player aggregate
+        run: |
+          echo "Waiting for player aggregate pod..."
+          kubectl wait --for=condition=ready pod -l angzarr.io/domain=player \
+            -n angzarr-test --timeout=180s || {
+            echo "Player aggregate pod not ready, checking status..."
+            kubectl get pods -n angzarr-test
+            exit 1
+          }
+
+      - name: Run acceptance tests
+        run: |
+          # Port-forward player aggregate coordinator
+          kubectl port-forward -n angzarr-test svc/player-aggregate 1310:1310 &
+          PF_PID=$!
+          trap "kill $PF_PID 2>/dev/null || true" EXIT
+
+          # Wait for port-forward to establish
+          for i in $(seq 1 10); do
+            if nc -z localhost 1310 2>/dev/null; then
+              echo "Port-forward to player-aggregate:1310 established"
+              break
+            fi
+            if [ $i -eq 10 ]; then
+              echo "WARNING: Port-forward may not be ready, proceeding anyway..."
+            fi
+            sleep 1
+          done
+
+          export PLAYER_URL="localhost:1310"
+          go test -v -tags=acceptance -count=1 ./tests/ -timeout=600s
+
+          kill $PF_PID 2>/dev/null || true
+
       - name: Show logs on failure
         if: failure()
         run: |
