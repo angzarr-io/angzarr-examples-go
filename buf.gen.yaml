@@ -7,8 +7,8 @@ inputs:
       - angzarr-project/proto/examples/ai_sidecar.proto
 plugins:
   - remote: buf.build/protocolbuffers/go
-    out: proto
+    out: angzarr-client-go/proto
     opt: paths=source_relative
   - remote: buf.build/grpc/go
-    out: proto
+    out: angzarr-client-go/proto
     opt: paths=source_relative
