@@ -345,10 +345,11 @@ jobs:
       - name: Configure git safe directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
+      - name: Generate proto code
+        run: buf generate
+
       - name: Download Go dependencies
-        run: |
-          go mod download
-          go build ./tests/ 2>&1 || true
+        run: go mod download
 
       - name: Wait for player aggregate
         run: |
