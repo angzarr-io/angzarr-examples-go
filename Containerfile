@@ -10,7 +10,7 @@
 # 3. Distroless runtime - minimal attack surface
 # 4. Multi-arch support (amd64 + arm64)
 
-ARG GO_VERSION=1.23
+ARG GO_VERSION=1.24
 
 # ============================================================================
 # Base builder - common SDK
