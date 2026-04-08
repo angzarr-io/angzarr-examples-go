@@ -342,6 +342,9 @@ jobs:
           go-version: '1.24'
           cache-dependency-path: go.sum
 
+      - name: Download Go dependencies
+        run: go mod download
+
       - name: Wait for player aggregate
         run: |
           echo "Waiting for player aggregate pod..."
