@@ -30,4 +30,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/benjaminabbitt/angzarr/client/go => ../../client-go/main
+replace github.com/benjaminabbitt/angzarr/client/go => ./angzarr-client-go

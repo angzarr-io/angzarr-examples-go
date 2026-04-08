@@ -5,7 +5,7 @@ metadata:
 
 # Requires base angzarr infrastructure
 requires:
-  - path: ../../skaffold.yaml
+  - path: ../../core/main/skaffold.yaml
 
 build:
   tagPolicy:
@@ -18,28 +18,28 @@ build:
     concurrency: 1
   artifacts:
     - image: ghcr.io/angzarr-io/poker-go-player
-      context: ../..
+      context: .
       docker:
-        dockerfile: examples/go/Containerfile
+        dockerfile: Containerfile
         target: agg-player
 
     - image: ghcr.io/angzarr-io/poker-go-table
-      context: ../..
+      context: .
       docker:
-        dockerfile: examples/go/Containerfile
+        dockerfile: Containerfile
         target: agg-table
 
     - image: ghcr.io/angzarr-io/poker-go-hand
-      context: ../..
+      context: .
       docker:
-        dockerfile: examples/go/Containerfile
+        dockerfile: Containerfile
         target: agg-hand
 
 deploy:
   helm:
     releases:
       - name: poker-go
-        chartPath: ../../deploy/k8s/helm/angzarr
+        chartPath: ../../core/main/deploy/k8s/helm/angzarr
         namespace: angzarr
         createNamespace: true
         valuesFiles:
@@ -72,27 +72,27 @@ profiles:
         push: false
       artifacts:
         - image: ghcr.io/angzarr-io/poker-go-player
-          context: ../..
+          context: .
           docker:
-            dockerfile: examples/go/Containerfile
+            dockerfile: Containerfile
             target: agg-player-debug
 
         - image: ghcr.io/angzarr-io/poker-go-table
-          context: ../..
+          context: .
           docker:
-            dockerfile: examples/go/Containerfile
+            dockerfile: Containerfile
             target: agg-table-debug
 
         - image: ghcr.io/angzarr-io/poker-go-hand
-          context: ../..
+          context: .
           docker:
-            dockerfile: examples/go/Containerfile
+            dockerfile: Containerfile
             target: agg-hand-debug
     deploy:
       helm:
         releases:
           - name: poker-go
-            chartPath: ../../deploy/k8s/helm/angzarr
+            chartPath: ../../core/main/deploy/k8s/helm/angzarr
             namespace: angzarr
             createNamespace: true
             valuesFiles:

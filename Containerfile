@@ -44,7 +44,7 @@ FROM base AS deps-fetcher
 WORKDIR /app
 
 # Copy client library (local dependency via go.mod replace directive)
-# The replace directive is: replace ... => ../../client/go
+# The replace directive is: replace ... => ./angzarr-client-go
 # From /app/examples/go, that resolves to /app/client/go
 COPY client/go ./client/go
 

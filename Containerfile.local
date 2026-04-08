@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1.4
+# Simplified Go poker examples - for multi-repo structure
+ARG GO_VERSION=1.24
+
+FROM docker.io/library/golang:${GO_VERSION}-alpine AS base
+RUN apk add --no-cache ca-certificates git
+WORKDIR /app
+
+# Build player aggregate
+FROM base AS build-player
+# The go.mod has: replace github.com/benjaminabbitt/angzarr/client/go => ./angzarr-client-go
+# The submodule is checked out locally at ./angzarr-client-go
+COPY angzarr-client-go /app/examples/go/angzarr-client-go
+COPY . /app/examples/go
+WORKDIR /app/examples/go
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    go mod tidy && go mod download && \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./player/agg
+
+# Build table aggregate
+FROM base AS build-table
+COPY angzarr-client-go /app/examples/go/angzarr-client-go
+COPY . /app/examples/go
+WORKDIR /app/examples/go
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    go mod tidy && go mod download && \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./table/agg
+
+# Build hand aggregate
+FROM base AS build-hand
+COPY angzarr-client-go /app/examples/go/angzarr-client-go
+COPY . /app/examples/go
+WORKDIR /app/examples/go
+RUN --mount=type=cache,id=go-mod-cache,target=/go/pkg/mod,sharing=locked \
+    go mod tidy && go mod download && \
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/server ./hand/agg
+
+# Runtime images
+FROM gcr.io/distroless/static-debian12:nonroot AS agg-player
+COPY --from=build-player /out/server /app/server
+ENTRYPOINT ["/app/server"]
+
+FROM gcr.io/distroless/static-debian12:nonroot AS agg-table
+COPY --from=build-table /out/server /app/server
+ENTRYPOINT ["/app/server"]
+
+FROM gcr.io/distroless/static-debian12:nonroot AS agg-hand
+COPY --from=build-hand /out/server /app/server
+ENTRYPOINT ["/app/server"]
