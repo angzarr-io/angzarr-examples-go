@@ -1,0 +1,20 @@
+# Kind cluster configuration for acceptance tests
+# Usage: kind create cluster --config deploy/kind/cluster.yaml --name angzarr-test
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.31.0
+    extraPortMappings:
+      - containerPort: 30084
+        hostPort: 9084
+        protocol: TCP
+      - containerPort: 31340
+        hostPort: 1340
+        protocol: TCP
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
