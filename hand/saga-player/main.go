@@ -34,6 +34,7 @@ func NewHandPlayerSaga() *HandPlayerSaga {
 // Sagas are stateless translators - framework handles sequence stamping.
 func (s *HandPlayerSaga) handlePotAwarded(
 	event *examples.PotAwarded,
+	dests []*pb.EventBook,
 ) ([]*pb.CommandBook, error) {
 	var commands []*pb.CommandBook
 
