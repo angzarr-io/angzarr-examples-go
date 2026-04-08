@@ -1,7 +1,7 @@
 version: v2
 inputs:
   - module: buf.build/angzarr/angzarr
-  - directory: proto  # Local poker domain protos
+  - directory: angzarr-project/proto  # Local poker domain protos
 plugins:
   - remote: buf.build/protocolbuffers/go
     out: proto
