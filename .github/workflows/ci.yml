@@ -24,7 +24,11 @@ jobs:
   test:
     name: Build & Test
     runs-on: ubuntu-latest
-    container: ghcr.io/angzarr-io/angzarr-go:latest
+    container:
+      image: ghcr.io/angzarr-io/angzarr-go:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GHCR_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
