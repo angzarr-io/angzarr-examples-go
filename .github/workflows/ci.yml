@@ -318,7 +318,7 @@ jobs:
           }
 
           echo "All pods ready. Port-forwarding gateway..."
-          kubectl port-forward -n angzarr-test svc/poker-angzarr-grpc-gateway 9084:9084 &
+          kubectl port-forward -n angzarr-test svc/poker-angzarr-grpc-gateway 9084:8080 &
           PF_PID=$!
           trap "kill $PF_PID 2>/dev/null || true" EXIT
           sleep 5

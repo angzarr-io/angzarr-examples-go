@@ -115,11 +115,11 @@ infrastructure:
   gateway:
     enabled: true
     replicas: 1
-    port: 9084
+    port: 8080
     serviceType: NodePort
     nodePort: 30084
-    streamService: "angzarr-stream:1340"
-    streamTimeoutSecs: 30
+    grpcTarget: "player-aggregate:1310"
+    descriptorConfigMap: "gateway-descriptor"
     resources:
       requests:
         memory: "64Mi"
