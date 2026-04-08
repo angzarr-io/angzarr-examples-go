@@ -274,7 +274,7 @@ jobs:
           COORD_VER: ${{ env.COORDINATOR_VERSION }}
         run: |
           helm upgrade --install poker oci://ghcr.io/angzarr-io/charts/angzarr \
-            --version 0.5.0 \
+            --version 0.5.1 \
             -f deploy/k8s/helm/values.yaml \
             -f deploy/k8s/helm/values-ci.yaml \
             --set images.aggregate.tag="${COORD_VER}" \
