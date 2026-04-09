@@ -1,3 +1,5 @@
+//go:build acceptance
+
 package tests
 import (
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
