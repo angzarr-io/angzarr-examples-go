@@ -471,7 +471,9 @@ func (ac *AcceptanceContext) registerPlayer(name, email string) error {
 	if err != nil {
 		return nil // Store error, let Then steps check it
 	}
-	p.sequence++
+	if resp.Events != nil {
+		p.sequence += uint32(len(resp.Events.Pages))
+	}
 	return nil
 }
 
@@ -492,7 +494,9 @@ func (ac *AcceptanceContext) depositChips(amount int, name string) error {
 	if err != nil {
 		return nil
 	}
-	p.sequence++
+	if resp.Events != nil {
+		p.sequence += uint32(len(resp.Events.Pages))
+	}
 	return nil
 }
 
@@ -515,7 +519,9 @@ func (ac *AcceptanceContext) depositChipsAsync(amount int, name string) error {
 	if err != nil {
 		return nil
 	}
-	p.sequence++
+	if resp.Events != nil {
+		p.sequence += uint32(len(resp.Events.Pages))
+	}
 	return nil
 }
 
@@ -537,7 +543,9 @@ func (ac *AcceptanceContext) depositChipsSimple(amount int, name string) error {
 	if err != nil {
 		return nil
 	}
-	p.sequence++
+	if resp.Events != nil {
+		p.sequence += uint32(len(resp.Events.Pages))
+	}
 	return nil
 }
 
@@ -607,7 +615,9 @@ func (ac *AcceptanceContext) depositChipsToAllPlayersAsync() error {
 		ac.lastResp = resp
 		ac.lastError = err
 		if err == nil {
-			p.sequence++
+			if resp.Events != nil {
+		p.sequence += uint32(len(resp.Events.Pages))
+	}
 		}
 	}
 	return nil
@@ -663,7 +673,9 @@ func (ac *AcceptanceContext) createTexasHoldemTable(name string, smallBlind, big
 	if err != nil {
 		return nil
 	}
-	t.sequence++
+	if resp.Events != nil {
+		t.sequence += uint32(len(resp.Events.Pages))
+	}
 	return nil
 }
 
@@ -691,7 +703,9 @@ func (ac *AcceptanceContext) createFiveCardDrawTable(name string, smallBlind, bi
 	if err != nil {
 		return nil
 	}
-	t.sequence++
+	if resp.Events != nil {
+		t.sequence += uint32(len(resp.Events.Pages))
+	}
 	return nil
 }
 
@@ -719,7 +733,9 @@ func (ac *AcceptanceContext) createOmahaTable(name string, smallBlind, bigBlind 
 	if err != nil {
 		return nil
 	}
-	t.sequence++
+	if resp.Events != nil {
+		t.sequence += uint32(len(resp.Events.Pages))
+	}
 	return nil
 }
 
@@ -743,7 +759,9 @@ func (ac *AcceptanceContext) playerJoinsTable(playerName, tableName string, seat
 	if err != nil {
 		return nil
 	}
-	t.sequence++
+	if resp.Events != nil {
+		t.sequence += uint32(len(resp.Events.Pages))
+	}
 	return nil
 }
 
@@ -765,7 +783,9 @@ func (ac *AcceptanceContext) playerLeavesTable(playerName, tableName string) err
 	if err != nil {
 		return nil
 	}
-	t.sequence++
+	if resp.Events != nil {
+		t.sequence += uint32(len(resp.Events.Pages))
+	}
 	return nil
 }
 
@@ -810,7 +830,9 @@ func (ac *AcceptanceContext) tableWithSeatedPlayers(tableName string, table *god
 	if err != nil {
 		return fmt.Errorf("failed to create table %s: %v", tableName, err)
 	}
-	t.sequence++
+	if resp.Events != nil {
+		t.sequence += uint32(len(resp.Events.Pages))
+	}
 
 	for _, row := range table.Rows[1:] {
 		name := row.Cells[0].Value
@@ -864,7 +886,9 @@ func (ac *AcceptanceContext) tableWithNSeatedPlayers(tableName string, count int
 	if err != nil {
 		return fmt.Errorf("failed to create table %s: %v", tableName, err)
 	}
-	t.sequence++
+	if resp.Events != nil {
+		t.sequence += uint32(len(resp.Events.Pages))
+	}
 
 	for i := 0; i < count; i++ {
 		name := fmt.Sprintf("Player%d", i+1)
@@ -962,7 +986,9 @@ func (ac *AcceptanceContext) tableWithNoSeatedPlayers() error {
 	ac.lastResp = resp
 	ac.lastError = err
 	if err == nil {
-		t.sequence++
+		if resp.Events != nil {
+		t.sequence += uint32(len(resp.Events.Pages))
+	}
 	}
 	return nil
 }
@@ -990,7 +1016,9 @@ func (ac *AcceptanceContext) sendStartHandCommand(tableName string) error {
 	if err != nil {
 		return nil
 	}
-	t.sequence++
+	if resp.Events != nil {
+		t.sequence += uint32(len(resp.Events.Pages))
+	}
 	ac.getOrCreateHand(tableName)
 	return nil
 }
@@ -1109,7 +1137,9 @@ func (ac *AcceptanceContext) sendPlayerAction(playerName string, action examples
 	if err != nil {
 		return nil
 	}
-	h.sequence++
+	if resp.Events != nil {
+		h.sequence += uint32(len(resp.Events.Pages))
+	}
 	return nil
 }
 
@@ -1170,7 +1200,9 @@ func (ac *AcceptanceContext) playerFoldsCascade(playerName string) error {
 	if err != nil {
 		return nil
 	}
-	h.sequence++
+	if resp.Events != nil {
+		h.sequence += uint32(len(resp.Events.Pages))
+	}
 	return nil
 }
 
@@ -1503,7 +1535,9 @@ func (ac *AcceptanceContext) startHandWithMode(tableName string, syncMode pb.Syn
 	if err != nil {
 		return nil
 	}
-	t.sequence++
+	if resp.Events != nil {
+		t.sequence += uint32(len(resp.Events.Pages))
+	}
 	ac.getOrCreateHand(tableName)
 	return nil
 }
