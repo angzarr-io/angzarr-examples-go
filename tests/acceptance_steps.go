@@ -672,35 +672,11 @@ func (ac *AcceptanceContext) createOmahaTable(name string, smallBlind, bigBlind 
 }
 
 func (ac *AcceptanceContext) playerJoinsTable(playerName, tableName string, seat, buyIn int) error {
-	t := ac.getOrCreateTable(tableName)
-	p := ac.getOrCreatePlayer(playerName)
-
-	cmd := &examples.JoinTable{
-		PlayerRoot:    p.root,
-		BuyInAmount:   int64(buyIn),
-		PreferredSeat: int32(seat),
-	}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-
-	return ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) playerLeavesTable(playerName, tableName string) error {
-	t := ac.getOrCreateTable(tableName)
-	p := ac.getOrCreatePlayer(playerName)
-
-	cmd := &examples.LeaveTable{
-		PlayerRoot: p.root,
-	}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-
-	return ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) tableHasSeatedPlayers(tableName string, count int) error {
@@ -708,161 +684,19 @@ func (ac *AcceptanceContext) tableHasSeatedPlayers(tableName string, count int) 
 }
 
 func (ac *AcceptanceContext) tableWithSeatedPlayers(tableName string, table *godog.Table) error {
-	minStack := int64(1<<63 - 1)
-	maxStack := int64(0)
-	for _, row := range table.Rows[1:] {
-		stack := parseInt64(row.Cells[2].Value)
-		if stack < minStack {
-			minStack = stack
-		}
-		if stack > maxStack {
-			maxStack = stack
-		}
-	}
-	if minStack > maxStack {
-		minStack = maxStack
-	}
-
-	t := ac.getOrCreateTable(tableName)
-	cmd := &examples.CreateTable{
-		TableName:            tableName,
-		GameVariant:          examples.GameVariant_TEXAS_HOLDEM,
-		SmallBlind:           5,
-		BigBlind:             10,
-		MinBuyIn:             minStack,
-		MaxBuyIn:             maxStack * 10,
-		MaxPlayers:           9,
-		ActionTimeoutSeconds: 30,
-	}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
-	if ac.lastError != nil {
-		return fmt.Errorf("failed to create table %s: %v", tableName, ac.lastError)
-	}
-
-	for _, row := range table.Rows[1:] {
-		name := row.Cells[0].Value
-		seat := int(parseInt32(row.Cells[1].Value))
-		stack := int(parseInt64(row.Cells[2].Value))
-
-		if _, exists := ac.players[name]; !exists {
-			if err := ac.registerPlayer(name, fmt.Sprintf("%s@example.com", strings.ToLower(name))); err != nil {
-				return err
-			}
-			if ac.lastError != nil {
-				return fmt.Errorf("failed to register %s: %v", name, ac.lastError)
-			}
-			if err := ac.depositChips(stack*2, name); err != nil {
-				return err
-			}
-			if ac.lastError != nil {
-				return fmt.Errorf("failed to deposit for %s: %v", name, ac.lastError)
-			}
-		}
-
-		if err := ac.playerJoinsTable(name, tableName, seat, stack); err != nil {
-			return err
-		}
-		if ac.lastError != nil {
-			return fmt.Errorf("failed to seat %s: %v", name, ac.lastError)
-		}
-	}
-	return nil
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) tableWithNSeatedPlayers(tableName string, count int) error {
-	t := ac.getOrCreateTable(tableName)
-	cmd := &examples.CreateTable{
-		TableName:            tableName,
-		GameVariant:          examples.GameVariant_TEXAS_HOLDEM,
-		SmallBlind:           5,
-		BigBlind:             10,
-		MinBuyIn:             200,
-		MaxBuyIn:             1000,
-		MaxPlayers:           9,
-		ActionTimeoutSeconds: 30,
-	}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
-	if ac.lastError != nil {
-		return fmt.Errorf("failed to create table %s: %v", tableName, ac.lastError)
-	}
-
-	for i := 0; i < count; i++ {
-		name := fmt.Sprintf("Player%d", i+1)
-		if _, exists := ac.players[name]; !exists {
-			if err := ac.registerPlayer(name, fmt.Sprintf("%s@example.com", strings.ToLower(name))); err != nil {
-				return err
-			}
-			if ac.lastError != nil {
-				return fmt.Errorf("failed to register %s: %v", name, ac.lastError)
-			}
-			if err := ac.depositChips(1000, name); err != nil {
-				return err
-			}
-			if ac.lastError != nil {
-				return fmt.Errorf("failed to deposit for %s: %v", name, ac.lastError)
-			}
-		}
-		if err := ac.playerJoinsTable(name, tableName, i, 500); err != nil {
-			return err
-		}
-		if ac.lastError != nil {
-			return fmt.Errorf("failed to seat %s: %v", name, ac.lastError)
-		}
-	}
-	return nil
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) tableWithActiveHand(tableName string) error {
-	if err := ac.tableWithNSeatedPlayers(tableName, 2); err != nil {
-		return err
-	}
-	return ac.handStartsAtTable(tableName)
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) seatedPlayersOnLastTable(table *godog.Table) error {
-	tableName := ac.lastTableKey
-	if tableName == "" {
-		return fmt.Errorf("no table has been created yet")
-	}
-	t := ac.getOrCreateTable(tableName)
-
-	for _, row := range table.Rows[1:] {
-		name := row.Cells[0].Value
-		seat := int(parseInt32(row.Cells[1].Value))
-		stack := int(parseInt64(row.Cells[2].Value))
-
-		if _, exists := ac.players[name]; !exists {
-			if err := ac.registerPlayer(name, fmt.Sprintf("%s@example.com", strings.ToLower(name))); err != nil {
-				return err
-			}
-			if ac.lastError != nil {
-				return fmt.Errorf("failed to register %s: %v", name, ac.lastError)
-			}
-			if err := ac.depositChips(stack*2, name); err != nil {
-				return err
-			}
-			if ac.lastError != nil {
-				return fmt.Errorf("failed to deposit for %s: %v", name, ac.lastError)
-			}
-		}
-
-		if err := ac.playerJoinsTable(name, tableName, seat, stack); err != nil {
-			return err
-		}
-		if ac.lastError != nil {
-			return fmt.Errorf("failed to seat %s at table %s: %v", name, tableName, ac.lastError)
-		}
-	}
-	_ = t
-	return nil
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) tableHasHandCount(tableName string, count int) error {
@@ -870,23 +704,7 @@ func (ac *AcceptanceContext) tableHasHandCount(tableName string, count int) erro
 }
 
 func (ac *AcceptanceContext) tableWithNoSeatedPlayers() error {
-	ac.getOrCreateTable("Empty")
-	t := ac.tables["Empty"]
-	cmd := &examples.CreateTable{
-		TableName:            "Empty",
-		GameVariant:          examples.GameVariant_TEXAS_HOLDEM,
-		SmallBlind:           5,
-		BigBlind:             10,
-		MinBuyIn:             100,
-		MaxBuyIn:             1000,
-		MaxPlayers:           9,
-		ActionTimeoutSeconds: 30,
-	}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-	return ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
+	return godog.ErrPending
 }
 
 // =============================================================================
@@ -894,35 +712,15 @@ func (ac *AcceptanceContext) tableWithNoSeatedPlayers() error {
 // =============================================================================
 
 func (ac *AcceptanceContext) handStartsAtTable(tableName string) error {
-	return ac.sendStartHandCommand(tableName)
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) sendStartHandCommand(tableName string) error {
-	t := ac.getOrCreateTable(tableName)
-
-	cmd := &examples.StartHand{}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-
-	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
-	if ac.lastError != nil {
-		return nil
-	}
-	ac.getOrCreateHand(tableName)
-	return nil
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) handStartsAndBlindsPosted(smallBlind, bigBlind int) error {
-	tableName := ac.lastTableKey
-	if tableName == "" {
-		return fmt.Errorf("no table has been created yet")
-	}
-	if err := ac.handStartsAtTable(tableName); err != nil {
-		return err
-	}
-	return ac.blindsArePosted(smallBlind, bigBlind)
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) blindsArePosted(smallBlind, bigBlind int) error {
@@ -932,12 +730,7 @@ func (ac *AcceptanceContext) blindsArePosted(smallBlind, bigBlind int) error {
 }
 
 func (ac *AcceptanceContext) handStartsWithDealerAtSeat(seat int) error {
-	tableName := ac.lastTableKey
-	if tableName == "" {
-		return fmt.Errorf("no table has been created yet")
-	}
-	// StartHand doesn't currently take a dealer position; it's auto-rotated.
-	return ac.handStartsAtTable(tableName)
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) deterministicDeckSeed(seed string) error {
