@@ -10,16 +10,16 @@ default:
     @just --list
 
 # Generate protos for client library (required before build)
-client-proto:
+proto-gen:
     cd {{ROOT}} && buf generate
 
-build: client-proto
+build: proto-gen
     go mod tidy && go build ./...
 
 test-unit:
     @echo "No unit tests for Go examples (using BDD tests in ./tests/)"
 
-test-acceptance: client-proto
+test-acceptance: proto-gen
     @if [ -d "./tests" ]; then go mod tidy && go test -v ./tests/...; else echo "No acceptance tests yet"; fi
 
 test: test-unit test-acceptance
