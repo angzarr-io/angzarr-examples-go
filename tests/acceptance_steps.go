@@ -54,15 +54,18 @@ type AcceptanceContext struct {
 }
 
 type playerRecord struct {
-	root []byte
+	root     []byte
+	sequence uint32
 }
 
 type tableRecord struct {
-	root []byte
+	root     []byte
+	sequence uint32
 }
 
 type handRecord struct {
 	root      []byte
+	sequence  uint32
 	tableKey  string
 	potTotal  int64
 	handCount int
@@ -118,19 +121,53 @@ func (ac *AcceptanceContext) getOrCreateHand(tableKey string) *handRecord {
 	return h
 }
 
+// advanceSeq updates a sequence counter based on the response event count.
+func advanceSeq(seq *uint32, resp *pb.CommandResponse) {
+	if resp != nil && resp.Events != nil {
+		*seq += uint32(len(resp.Events.Pages))
+	}
+}
+
+// sendAndAdvance sends a command at the current sequence, stores lastResp/lastError,
+// and advances the sequence by the event page count on success.
+func (ac *AcceptanceContext) sendAndAdvance(domain string, root []byte, cmdAny *anypb.Any, seq *uint32) {
+	resp, err := ac.client.SendCommand(domain, root, cmdAny, *seq)
+	ac.lastResp = resp
+	ac.lastError = err
+	if err == nil {
+		advanceSeq(seq, resp)
+	}
+}
+
+// sendAndAdvanceWithMode sends a command with explicit sync/cascade modes,
+// stores lastResp/lastError, and advances the sequence on success.
+func (ac *AcceptanceContext) sendAndAdvanceWithMode(domain string, root []byte, cmdAny *anypb.Any, seq *uint32, syncMode pb.SyncMode, cascadeErrorMode pb.CascadeErrorMode) {
+	resp, err := ac.client.SendCommandWithMode(domain, root, cmdAny, *seq, syncMode, cascadeErrorMode)
+	ac.lastResp = resp
+	ac.lastError = err
+	if err == nil {
+		advanceSeq(seq, resp)
+	}
+}
+
 // sendWithRetry sends a command with retry for eventual consistency.
-func (ac *AcceptanceContext) sendWithRetry(domain string, root []byte, cmdAny *anypb.Any, sequence uint32) (*pb.CommandResponse, error) {
+// On success it advances the sequence.
+func (ac *AcceptanceContext) sendWithRetry(domain string, root []byte, cmdAny *anypb.Any, seq *uint32) {
 	maxAttempts := 10
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		resp, err := ac.client.SendCommand(domain, root, cmdAny, sequence)
+		resp, err := ac.client.SendCommand(domain, root, cmdAny, *seq)
 		if err == nil {
-			return resp, nil
+			ac.lastResp = resp
+			ac.lastError = nil
+			advanceSeq(seq, resp)
+			return
 		}
 		lastErr = err
 		time.Sleep(time.Duration(200*attempt) * time.Millisecond)
 	}
-	return nil, fmt.Errorf("command failed after %d attempts: %w", maxAttempts, lastErr)
+	ac.lastResp = nil
+	ac.lastError = fmt.Errorf("command failed after %d attempts: %w", maxAttempts, lastErr)
 }
 
 // InitAcceptanceSteps registers acceptance step definitions that use CommandClient.
@@ -462,12 +499,7 @@ func (ac *AcceptanceContext) registerPlayer(name, email string) error {
 		return err
 	}
 
-	resp, err := ac.client.SendCommand("player", p.root, cmdAny, 0)
-	ac.lastResp = resp
-	ac.lastError = err
-	if err != nil {
-		return nil // Store error, let Then steps check it
-	}
+	ac.sendAndAdvance("player", p.root, cmdAny, &p.sequence)
 	return nil
 }
 
@@ -482,12 +514,7 @@ func (ac *AcceptanceContext) depositChips(amount int, name string) error {
 		return err
 	}
 
-	resp, err := ac.sendWithRetry("player", p.root, cmdAny, 0)
-	ac.lastResp = resp
-	ac.lastError = err
-	if err != nil {
-		return nil
-	}
+	ac.sendWithRetry("player", p.root, cmdAny, &p.sequence)
 	return nil
 }
 
@@ -503,13 +530,8 @@ func (ac *AcceptanceContext) depositChipsAsync(amount int, name string) error {
 	}
 
 	ac.syncTestStartTime = time.Now()
-	resp, err := ac.client.SendCommandWithMode("player", p.root, cmdAny, 0,
+	ac.sendAndAdvanceWithMode("player", p.root, cmdAny, &p.sequence,
 		pb.SyncMode_SYNC_MODE_ASYNC, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
-	ac.lastResp = resp
-	ac.lastError = err
-	if err != nil {
-		return nil
-	}
 	return nil
 }
 
@@ -524,13 +546,8 @@ func (ac *AcceptanceContext) depositChipsSimple(amount int, name string) error {
 		return err
 	}
 
-	resp, err := ac.client.SendCommandWithMode("player", p.root, cmdAny, 0,
+	ac.sendAndAdvanceWithMode("player", p.root, cmdAny, &p.sequence,
 		pb.SyncMode_SYNC_MODE_SIMPLE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
-	ac.lastResp = resp
-	ac.lastError = err
-	if err != nil {
-		return nil
-	}
 	return nil
 }
 
@@ -595,11 +612,8 @@ func (ac *AcceptanceContext) depositChipsToAllPlayersAsync() error {
 		if err != nil {
 			return err
 		}
-		resp, err := ac.client.SendCommandWithMode("player", p.root, cmdAny, 0,
+		ac.sendAndAdvanceWithMode("player", p.root, cmdAny, &p.sequence,
 			pb.SyncMode_SYNC_MODE_ASYNC, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
-		ac.lastResp = resp
-		ac.lastError = err
-		// err already tracked via ac.lastError
 	}
 	return nil
 }
@@ -648,12 +662,7 @@ func (ac *AcceptanceContext) createTexasHoldemTable(name string, smallBlind, big
 		return err
 	}
 
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
-	ac.lastResp = resp
-	ac.lastError = err
-	if err != nil {
-		return nil
-	}
+	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
 	return nil
 }
 
@@ -675,12 +684,7 @@ func (ac *AcceptanceContext) createFiveCardDrawTable(name string, smallBlind, bi
 		return err
 	}
 
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
-	ac.lastResp = resp
-	ac.lastError = err
-	if err != nil {
-		return nil
-	}
+	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
 	return nil
 }
 
@@ -702,12 +706,7 @@ func (ac *AcceptanceContext) createOmahaTable(name string, smallBlind, bigBlind 
 		return err
 	}
 
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
-	ac.lastResp = resp
-	ac.lastError = err
-	if err != nil {
-		return nil
-	}
+	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
 	return nil
 }
 
@@ -725,12 +724,7 @@ func (ac *AcceptanceContext) playerJoinsTable(playerName, tableName string, seat
 		return err
 	}
 
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
-	ac.lastResp = resp
-	ac.lastError = err
-	if err != nil {
-		return nil
-	}
+	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
 	return nil
 }
 
@@ -746,12 +740,7 @@ func (ac *AcceptanceContext) playerLeavesTable(playerName, tableName string) err
 		return err
 	}
 
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
-	ac.lastResp = resp
-	ac.lastError = err
-	if err != nil {
-		return nil
-	}
+	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
 	return nil
 }
 
@@ -790,11 +779,9 @@ func (ac *AcceptanceContext) tableWithSeatedPlayers(tableName string, table *god
 	if err != nil {
 		return err
 	}
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
-	ac.lastResp = resp
-	ac.lastError = err
-	if err != nil {
-		return fmt.Errorf("failed to create table %s: %v", tableName, err)
+	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
+	if ac.lastError != nil {
+		return fmt.Errorf("failed to create table %s: %v", tableName, ac.lastError)
 	}
 
 	for _, row := range table.Rows[1:] {
@@ -843,11 +830,9 @@ func (ac *AcceptanceContext) tableWithNSeatedPlayers(tableName string, count int
 	if err != nil {
 		return err
 	}
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
-	ac.lastResp = resp
-	ac.lastError = err
-	if err != nil {
-		return fmt.Errorf("failed to create table %s: %v", tableName, err)
+	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
+	if ac.lastError != nil {
+		return fmt.Errorf("failed to create table %s: %v", tableName, ac.lastError)
 	}
 
 	for i := 0; i < count; i++ {
@@ -942,9 +927,7 @@ func (ac *AcceptanceContext) tableWithNoSeatedPlayers() error {
 	if err != nil {
 		return err
 	}
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
-	ac.lastResp = resp
-	ac.lastError = err
+	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
 	return nil
 }
 
@@ -965,10 +948,8 @@ func (ac *AcceptanceContext) sendStartHandCommand(tableName string) error {
 		return err
 	}
 
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
-	ac.lastResp = resp
-	ac.lastError = err
-	if err != nil {
+	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
+	if ac.lastError != nil {
 		return nil
 	}
 	ac.getOrCreateHand(tableName)
@@ -1083,12 +1064,7 @@ func (ac *AcceptanceContext) sendPlayerAction(playerName string, action examples
 		return err
 	}
 
-	resp, err := ac.client.SendCommand("hand", h.root, cmdAny, 0)
-	ac.lastResp = resp
-	ac.lastError = err
-	if err != nil {
-		return nil
-	}
+	ac.sendAndAdvance("hand", h.root, cmdAny, &h.sequence)
 	return nil
 }
 
@@ -1142,13 +1118,8 @@ func (ac *AcceptanceContext) playerFoldsCascade(playerName string) error {
 		return err
 	}
 
-	resp, err := ac.client.SendCommandWithMode("hand", h.root, cmdAny, 0,
+	ac.sendAndAdvanceWithMode("hand", h.root, cmdAny, &h.sequence,
 		pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
-	ac.lastResp = resp
-	ac.lastError = err
-	if err != nil {
-		return nil
-	}
 	return nil
 }
 
@@ -1474,11 +1445,9 @@ func (ac *AcceptanceContext) startHandWithMode(tableName string, syncMode pb.Syn
 	}
 
 	ac.syncTestStartTime = time.Now()
-	resp, err := ac.client.SendCommandWithMode("table", t.root, cmdAny, 0,
+	ac.sendAndAdvanceWithMode("table", t.root, cmdAny, &t.sequence,
 		syncMode, cascadeErrorMode)
-	ac.lastResp = resp
-	ac.lastError = err
-	if err != nil {
+	if ac.lastError != nil {
 		return nil
 	}
 	ac.getOrCreateHand(tableName)
