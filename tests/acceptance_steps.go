@@ -154,7 +154,7 @@ func (ac *AcceptanceContext) sendAndAdvanceWithMode(domain string, root []byte, 
 
 // sendWithRetry sends a command with retry for eventual consistency.
 // On success it advances the sequence.
-func (ac *AcceptanceContext) sendWithRetry(domain string, root []byte, cmdAny *anypb.Any, seq *uint32) {
+func (ac *AcceptanceContext) sendWithRetry(domain string, root []byte, cmdAny *anypb.Any, seq *uint32) error {
 	maxAttempts := 10
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
@@ -163,13 +163,14 @@ func (ac *AcceptanceContext) sendWithRetry(domain string, root []byte, cmdAny *a
 			ac.lastResp = resp
 			ac.lastError = nil
 			advanceSeq(seq, resp)
-			return
+			return nil
 		}
 		lastErr = err
 		time.Sleep(time.Duration(200*attempt) * time.Millisecond)
 	}
 	ac.lastResp = nil
 	ac.lastError = fmt.Errorf("command failed after %d attempts: %w", maxAttempts, lastErr)
+	return ac.lastError
 }
 
 // InitAcceptanceSteps registers acceptance step definitions that use CommandClient.
