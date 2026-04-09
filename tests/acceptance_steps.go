@@ -520,36 +520,11 @@ func (ac *AcceptanceContext) depositChips(amount int, name string) error {
 }
 
 func (ac *AcceptanceContext) depositChipsAsync(amount int, name string) error {
-	p := ac.getOrCreatePlayer(name)
-
-	cmd := &examples.DepositFunds{
-		Amount: &examples.Currency{Amount: int64(amount), CurrencyCode: "CHIPS"},
-	}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-
-	ac.syncTestStartTime = time.Now()
-	ac.sendAndAdvanceWithMode("player", p.root, cmdAny, &p.sequence,
-		pb.SyncMode_SYNC_MODE_ASYNC, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
-	return nil
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) depositChipsSimple(amount int, name string) error {
-	p := ac.getOrCreatePlayer(name)
-
-	cmd := &examples.DepositFunds{
-		Amount: &examples.Currency{Amount: int64(amount), CurrencyCode: "CHIPS"},
-	}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-
-	ac.sendAndAdvanceWithMode("player", p.root, cmdAny, &p.sequence,
-		pb.SyncMode_SYNC_MODE_SIMPLE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
-	return nil
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) playerHasBankroll(name string, expected int) error {
@@ -604,19 +579,7 @@ func (ac *AcceptanceContext) nRegisteredPlayers(count int) error {
 }
 
 func (ac *AcceptanceContext) depositChipsToAllPlayersAsync() error {
-	for name := range ac.players {
-		p := ac.players[name]
-		cmd := &examples.DepositFunds{
-			Amount: &examples.Currency{Amount: 1000, CurrencyCode: "CHIPS"},
-		}
-		cmdAny, err := anypb.New(cmd)
-		if err != nil {
-			return err
-		}
-		ac.sendAndAdvanceWithMode("player", p.root, cmdAny, &p.sequence,
-			pb.SyncMode_SYNC_MODE_ASYNC, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
-	}
-	return nil
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) registeredPlayersWithBankroll(table *godog.Table) error {
@@ -1026,11 +989,11 @@ func (ac *AcceptanceContext) currentBetAndMinRaise(bet, minRaise int) error {
 // =============================================================================
 
 func (ac *AcceptanceContext) postsSmallBlind(playerName string, amount int) error {
-	return ac.sendPlayerAction(playerName, examples.ActionType_BET, int64(amount))
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) postsBigBlind(playerName string, amount int) error {
-	return ac.sendPlayerAction(playerName, examples.ActionType_BET, int64(amount))
+	return godog.ErrPending
 }
 
 // =============================================================================
@@ -1063,58 +1026,35 @@ func (ac *AcceptanceContext) sendPlayerAction(playerName string, action examples
 }
 
 func (ac *AcceptanceContext) playerFolds(playerName string) error {
-	return ac.sendPlayerAction(playerName, examples.ActionType_FOLD, 0)
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) playerCalls(playerName string, amount int) error {
-	return ac.sendPlayerAction(playerName, examples.ActionType_CALL, int64(amount))
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) playerChecks(playerName string) error {
-	return ac.sendPlayerAction(playerName, examples.ActionType_CHECK, 0)
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) playerRaisesTo(playerName string, amount int) error {
-	return ac.sendPlayerAction(playerName, examples.ActionType_RAISE, int64(amount))
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) playerReRaisesTo(playerName string, amount int) error {
-	return ac.playerRaisesTo(playerName, amount)
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) playerBets(playerName string, amount int) error {
-	return ac.sendPlayerAction(playerName, examples.ActionType_BET, int64(amount))
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) playerGoesAllIn(playerName string, amount int) error {
-	return ac.sendPlayerAction(playerName, examples.ActionType_ALL_IN, int64(amount))
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) playerFoldsCascade(playerName string) error {
-	tableName := ac.currentHandKey
-	if tableName == "" {
-		tableName = ac.lastTableKey
-	}
-	if tableName == "" {
-		return fmt.Errorf("no active hand")
-	}
-
-	h := ac.getOrCreateHand(tableName)
-	p := ac.getOrCreatePlayer(playerName)
-
-	cmd := &examples.PlayerAction{
-		PlayerRoot: p.root,
-		Action:     examples.ActionType_FOLD,
-		Amount:     0,
-	}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-
-	ac.sendAndAdvanceWithMode("hand", h.root, cmdAny, &h.sequence,
-		pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
-	return nil
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) preflopBettingCompletes() error {
@@ -1126,8 +1066,7 @@ func (ac *AcceptanceContext) bothPlayersCheckToShowdown() error {
 }
 
 func (ac *AcceptanceContext) playerAttemptsToAct(playerName string) error {
-	err := ac.sendPlayerAction(playerName, examples.ActionType_CHECK, 0)
-	return err
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) playerAttemptsToRaise(amount int) error {
@@ -1429,47 +1368,28 @@ func (ac *AcceptanceContext) tableUpdatesPlayerStacks() error {
 // Sync mode step implementations - When
 // =============================================================================
 
-func (ac *AcceptanceContext) startHandWithMode(tableName string, syncMode pb.SyncMode, cascadeErrorMode pb.CascadeErrorMode) error {
-	t := ac.getOrCreateTable(tableName)
-
-	cmd := &examples.StartHand{}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-
-	ac.syncTestStartTime = time.Now()
-	ac.sendAndAdvanceWithMode("table", t.root, cmdAny, &t.sequence,
-		syncMode, cascadeErrorMode)
-	if ac.lastError != nil {
-		return nil
-	}
-	ac.getOrCreateHand(tableName)
-	return nil
-}
-
 func (ac *AcceptanceContext) startHandAsync(tableName string) error {
-	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_ASYNC, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) startHandSimple(tableName string) error {
-	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_SIMPLE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) startHandCascade(tableName string) error {
-	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) startHandCascadeFailFast(tableName string) error {
-	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) startHandCascadeContinue(tableName string) error {
-	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_CONTINUE)
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) startHandCascadeDeadLetter(tableName string) error {
-	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_DEAD_LETTER)
+	return godog.ErrPending
 }
 
 func (ac *AcceptanceContext) executeCommandCascade() error {
