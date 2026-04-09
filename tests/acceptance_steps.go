@@ -37,15 +37,13 @@ type tableRecord struct {
 }
 
 func newAcceptanceContext() *AcceptanceContext {
-	var client CommandClient
-	if url := os.Getenv("PLAYER_URL"); url != "" {
-		c, err := newGRPCClient(url)
-		if err != nil {
-			panic(fmt.Sprintf("failed to create gRPC client: %v", err))
-		}
-		client = c
-	} else {
-		client = newInProcessClient()
+	url := os.Getenv("PLAYER_URL")
+	if url == "" {
+		url = "localhost:1310"
+	}
+	client, err := newGRPCClient(url)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create gRPC client: %v", err))
 	}
 
 	return &AcceptanceContext{
@@ -84,10 +82,6 @@ func InitAcceptanceSteps(ctx *godog.ScenarioContext) {
 		ac.tables = make(map[string]*tableRecord)
 		ac.lastError = nil
 		ac.lastResp = nil
-		// Re-create in-process client for clean state per scenario.
-		if _, ok := ac.client.(*inProcessClient); ok {
-			ac.client = newInProcessClient()
-		}
 		return c, nil
 	})
 
