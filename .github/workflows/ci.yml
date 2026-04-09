@@ -363,27 +363,28 @@ jobs:
 
       - name: Run acceptance tests
         run: |
-          # Port-forward player aggregate coordinator
+          # Port-forward all aggregate coordinators
           kubectl port-forward -n angzarr-test svc/player-aggregate 1310:1310 &
-          PF_PID=$!
-          trap "kill $PF_PID 2>/dev/null || true" EXIT
+          kubectl port-forward -n angzarr-test svc/table-aggregate 1311:1310 &
+          kubectl port-forward -n angzarr-test svc/hand-aggregate 1312:1310 &
+          trap "kill $(jobs -p) 2>/dev/null || true" EXIT
 
-          # Wait for port-forward to establish
+          # Wait for port-forwards to establish
           for i in $(seq 1 10); do
             if nc -z localhost 1310 2>/dev/null; then
-              echo "Port-forward to player-aggregate:1310 established"
+              echo "Port-forwards established"
               break
             fi
             if [ $i -eq 10 ]; then
-              echo "WARNING: Port-forward may not be ready, proceeding anyway..."
+              echo "WARNING: Port-forwards may not be ready, proceeding anyway..."
             fi
             sleep 1
           done
 
           export PLAYER_URL="localhost:1310"
+          export TABLE_URL="localhost:1311"
+          export HAND_URL="localhost:1312"
           go test -v -tags=acceptance -count=1 ./tests/ -timeout=600s
-
-          kill $PF_PID 2>/dev/null || true
 
       - name: Show logs on failure
         if: failure()

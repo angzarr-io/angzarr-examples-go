@@ -5,6 +5,7 @@ package tests
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
@@ -14,28 +15,58 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-// grpcClient sends commands to a running angzarr coordinator via gRPC.
+// grpcClient sends commands to running angzarr coordinators via gRPC.
+// Routes by domain to the appropriate coordinator endpoint.
 type grpcClient struct {
-	conn   *grpc.ClientConn
-	client pb.CommandHandlerCoordinatorServiceClient
+	conns   map[string]*grpc.ClientConn
+	clients map[string]pb.CommandHandlerCoordinatorServiceClient
 }
 
-// newGRPCClient creates a gRPC command client connected to the given address.
-func newGRPCClient(addr string) (*grpcClient, error) {
-	conn, err := grpc.NewClient(addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gRPC client for %s: %w", addr, err)
+// newGRPCClient creates a gRPC command client with per-domain routing.
+// playerAddr is required; TABLE_URL and HAND_URL env vars provide table/hand endpoints.
+func newGRPCClient(playerAddr string) (*grpcClient, error) {
+	c := &grpcClient{
+		conns:   make(map[string]*grpc.ClientConn),
+		clients: make(map[string]pb.CommandHandlerCoordinatorServiceClient),
 	}
-	return &grpcClient{
-		conn:   conn,
-		client: pb.NewCommandHandlerCoordinatorServiceClient(conn),
-	}, nil
+
+	addrs := map[string]string{
+		"player": playerAddr,
+		"table":  os.Getenv("TABLE_URL"),
+		"hand":   os.Getenv("HAND_URL"),
+	}
+	// Default table/hand to player addr if not set
+	if addrs["table"] == "" {
+		addrs["table"] = playerAddr
+	}
+	if addrs["hand"] == "" {
+		addrs["hand"] = playerAddr
+	}
+
+	for domain, addr := range addrs {
+		conn, err := grpc.NewClient(addr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			c.Close()
+			return nil, fmt.Errorf("failed to create gRPC client for %s (%s): %w", domain, addr, err)
+		}
+		c.conns[domain] = conn
+		c.clients[domain] = pb.NewCommandHandlerCoordinatorServiceClient(conn)
+	}
+	return c, nil
 }
 
 func (g *grpcClient) SendCommand(domain string, root []byte, command *anypb.Any, sequence uint32) (*pb.CommandResponse, error) {
 	return g.SendCommandWithMode(domain, root, command, sequence, pb.SyncMode_SYNC_MODE_SIMPLE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
+}
+
+func (g *grpcClient) clientForDomain(domain string) pb.CommandHandlerCoordinatorServiceClient {
+	if c, ok := g.clients[domain]; ok {
+		return c
+	}
+	// Fall back to player
+	return g.clients["player"]
 }
 
 func (g *grpcClient) SendCommandWithMode(domain string, root []byte, command *anypb.Any, sequence uint32, syncMode pb.SyncMode, cascadeErrorMode pb.CascadeErrorMode) (*pb.CommandResponse, error) {
@@ -67,11 +98,11 @@ func (g *grpcClient) SendCommandWithMode(domain string, root []byte, command *an
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	return g.client.HandleCommand(ctx, req)
+	return g.clientForDomain(domain).HandleCommand(ctx, req)
 }
 
 func (g *grpcClient) Close() {
-	if g.conn != nil {
-		g.conn.Close()
+	for _, conn := range g.conns {
+		conn.Close()
 	}
 }
