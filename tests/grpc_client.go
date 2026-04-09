@@ -1,7 +1,5 @@
 //go:build acceptance
 
-//go:build acceptance
-
 package tests
 
 import (
@@ -37,6 +35,10 @@ func newGRPCClient(addr string) (*grpcClient, error) {
 }
 
 func (g *grpcClient) SendCommand(domain string, root []byte, command *anypb.Any, sequence uint32) (*pb.CommandResponse, error) {
+	return g.SendCommandWithMode(domain, root, command, sequence, pb.SyncMode_SYNC_MODE_SIMPLE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
+}
+
+func (g *grpcClient) SendCommandWithMode(domain string, root []byte, command *anypb.Any, sequence uint32, syncMode pb.SyncMode, cascadeErrorMode pb.CascadeErrorMode) (*pb.CommandResponse, error) {
 	correlationID := uuid.New().String()
 	req := &pb.CommandRequest{
 		Command: &pb.CommandBook{
@@ -58,7 +60,8 @@ func (g *grpcClient) SendCommand(domain string, root []byte, command *anypb.Any,
 				},
 			},
 		},
-		SyncMode: pb.SyncMode_SYNC_MODE_SIMPLE,
+		SyncMode:         syncMode,
+		CascadeErrorMode: cascadeErrorMode,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
