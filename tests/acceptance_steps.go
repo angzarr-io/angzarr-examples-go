@@ -130,24 +130,26 @@ func advanceSeq(seq *uint32, resp *pb.CommandResponse) {
 
 // sendAndAdvance sends a command at the current sequence, stores lastResp/lastError,
 // and advances the sequence by the event page count on success.
-func (ac *AcceptanceContext) sendAndAdvance(domain string, root []byte, cmdAny *anypb.Any, seq *uint32) {
+func (ac *AcceptanceContext) sendAndAdvance(domain string, root []byte, cmdAny *anypb.Any, seq *uint32) error {
 	resp, err := ac.client.SendCommand(domain, root, cmdAny, *seq)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err == nil {
 		advanceSeq(seq, resp)
 	}
+	return err
 }
 
 // sendAndAdvanceWithMode sends a command with explicit sync/cascade modes,
 // stores lastResp/lastError, and advances the sequence on success.
-func (ac *AcceptanceContext) sendAndAdvanceWithMode(domain string, root []byte, cmdAny *anypb.Any, seq *uint32, syncMode pb.SyncMode, cascadeErrorMode pb.CascadeErrorMode) {
+func (ac *AcceptanceContext) sendAndAdvanceWithMode(domain string, root []byte, cmdAny *anypb.Any, seq *uint32, syncMode pb.SyncMode, cascadeErrorMode pb.CascadeErrorMode) error {
 	resp, err := ac.client.SendCommandWithMode(domain, root, cmdAny, *seq, syncMode, cascadeErrorMode)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err == nil {
 		advanceSeq(seq, resp)
 	}
+	return err
 }
 
 // sendWithRetry sends a command with retry for eventual consistency.
@@ -499,8 +501,7 @@ func (ac *AcceptanceContext) registerPlayer(name, email string) error {
 		return err
 	}
 
-	ac.sendAndAdvance("player", p.root, cmdAny, &p.sequence)
-	return nil
+	return ac.sendAndAdvance("player", p.root, cmdAny, &p.sequence)
 }
 
 func (ac *AcceptanceContext) depositChips(amount int, name string) error {
@@ -514,8 +515,7 @@ func (ac *AcceptanceContext) depositChips(amount int, name string) error {
 		return err
 	}
 
-	ac.sendWithRetry("player", p.root, cmdAny, &p.sequence)
-	return nil
+	return ac.sendWithRetry("player", p.root, cmdAny, &p.sequence)
 }
 
 func (ac *AcceptanceContext) depositChipsAsync(amount int, name string) error {
@@ -662,8 +662,7 @@ func (ac *AcceptanceContext) createTexasHoldemTable(name string, smallBlind, big
 		return err
 	}
 
-	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
-	return nil
+	return ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
 }
 
 func (ac *AcceptanceContext) createFiveCardDrawTable(name string, smallBlind, bigBlind int) error {
@@ -684,8 +683,7 @@ func (ac *AcceptanceContext) createFiveCardDrawTable(name string, smallBlind, bi
 		return err
 	}
 
-	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
-	return nil
+	return ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
 }
 
 func (ac *AcceptanceContext) createOmahaTable(name string, smallBlind, bigBlind int) error {
@@ -706,8 +704,7 @@ func (ac *AcceptanceContext) createOmahaTable(name string, smallBlind, bigBlind 
 		return err
 	}
 
-	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
-	return nil
+	return ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
 }
 
 func (ac *AcceptanceContext) playerJoinsTable(playerName, tableName string, seat, buyIn int) error {
@@ -724,8 +721,7 @@ func (ac *AcceptanceContext) playerJoinsTable(playerName, tableName string, seat
 		return err
 	}
 
-	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
-	return nil
+	return ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
 }
 
 func (ac *AcceptanceContext) playerLeavesTable(playerName, tableName string) error {
@@ -740,8 +736,7 @@ func (ac *AcceptanceContext) playerLeavesTable(playerName, tableName string) err
 		return err
 	}
 
-	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
-	return nil
+	return ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
 }
 
 func (ac *AcceptanceContext) tableHasSeatedPlayers(tableName string, count int) error {
@@ -927,8 +922,7 @@ func (ac *AcceptanceContext) tableWithNoSeatedPlayers() error {
 	if err != nil {
 		return err
 	}
-	ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
-	return nil
+	return ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
 }
 
 // =============================================================================
@@ -1064,8 +1058,7 @@ func (ac *AcceptanceContext) sendPlayerAction(playerName string, action examples
 		return err
 	}
 
-	ac.sendAndAdvance("hand", h.root, cmdAny, &h.sequence)
-	return nil
+	return ac.sendAndAdvance("hand", h.root, cmdAny, &h.sequence)
 }
 
 func (ac *AcceptanceContext) playerFolds(playerName string) error {
