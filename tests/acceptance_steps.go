@@ -54,18 +54,15 @@ type AcceptanceContext struct {
 }
 
 type playerRecord struct {
-	root     []byte
-	sequence uint32
+	root []byte
 }
 
 type tableRecord struct {
-	root     []byte
-	sequence uint32
+	root []byte
 }
 
 type handRecord struct {
 	root      []byte
-	sequence  uint32
 	tableKey  string
 	potTotal  int64
 	handCount int
@@ -94,7 +91,7 @@ func (ac *AcceptanceContext) getOrCreatePlayer(name string) *playerRecord {
 		return p
 	}
 	id := uuid.New()
-	p := &playerRecord{root: id[:], sequence: 0}
+	p := &playerRecord{root: id[:]}
 	ac.players[name] = p
 	return p
 }
@@ -104,7 +101,7 @@ func (ac *AcceptanceContext) getOrCreateTable(name string) *tableRecord {
 		return t
 	}
 	id := uuid.New()
-	t := &tableRecord{root: id[:], sequence: 0}
+	t := &tableRecord{root: id[:]}
 	ac.tables[name] = t
 	ac.lastTableKey = name
 	return t
@@ -115,7 +112,7 @@ func (ac *AcceptanceContext) getOrCreateHand(tableKey string) *handRecord {
 		return h
 	}
 	id := uuid.New()
-	h := &handRecord{root: id[:], sequence: 0, tableKey: tableKey}
+	h := &handRecord{root: id[:], tableKey: tableKey}
 	ac.hands[tableKey] = h
 	ac.currentHandKey = tableKey
 	return h
@@ -465,14 +462,11 @@ func (ac *AcceptanceContext) registerPlayer(name, email string) error {
 		return err
 	}
 
-	resp, err := ac.client.SendCommand("player", p.root, cmdAny, p.sequence)
+	resp, err := ac.client.SendCommand("player", p.root, cmdAny, 0)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err != nil {
 		return nil // Store error, let Then steps check it
-	}
-	if resp.Events != nil {
-		p.sequence += uint32(len(resp.Events.Pages))
 	}
 	return nil
 }
@@ -488,14 +482,11 @@ func (ac *AcceptanceContext) depositChips(amount int, name string) error {
 		return err
 	}
 
-	resp, err := ac.sendWithRetry("player", p.root, cmdAny, p.sequence)
+	resp, err := ac.sendWithRetry("player", p.root, cmdAny, 0)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err != nil {
 		return nil
-	}
-	if resp.Events != nil {
-		p.sequence += uint32(len(resp.Events.Pages))
 	}
 	return nil
 }
@@ -512,15 +503,12 @@ func (ac *AcceptanceContext) depositChipsAsync(amount int, name string) error {
 	}
 
 	ac.syncTestStartTime = time.Now()
-	resp, err := ac.client.SendCommandWithMode("player", p.root, cmdAny, p.sequence,
+	resp, err := ac.client.SendCommandWithMode("player", p.root, cmdAny, 0,
 		pb.SyncMode_SYNC_MODE_ASYNC, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err != nil {
 		return nil
-	}
-	if resp.Events != nil {
-		p.sequence += uint32(len(resp.Events.Pages))
 	}
 	return nil
 }
@@ -536,15 +524,12 @@ func (ac *AcceptanceContext) depositChipsSimple(amount int, name string) error {
 		return err
 	}
 
-	resp, err := ac.client.SendCommandWithMode("player", p.root, cmdAny, p.sequence,
+	resp, err := ac.client.SendCommandWithMode("player", p.root, cmdAny, 0,
 		pb.SyncMode_SYNC_MODE_SIMPLE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err != nil {
 		return nil
-	}
-	if resp.Events != nil {
-		p.sequence += uint32(len(resp.Events.Pages))
 	}
 	return nil
 }
@@ -610,15 +595,11 @@ func (ac *AcceptanceContext) depositChipsToAllPlayersAsync() error {
 		if err != nil {
 			return err
 		}
-		resp, err := ac.client.SendCommandWithMode("player", p.root, cmdAny, p.sequence,
+		resp, err := ac.client.SendCommandWithMode("player", p.root, cmdAny, 0,
 			pb.SyncMode_SYNC_MODE_ASYNC, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
 		ac.lastResp = resp
 		ac.lastError = err
-		if err == nil {
-			if resp.Events != nil {
-				p.sequence += uint32(len(resp.Events.Pages))
-			}
-		}
+		// err already tracked via ac.lastError
 	}
 	return nil
 }
@@ -667,14 +648,11 @@ func (ac *AcceptanceContext) createTexasHoldemTable(name string, smallBlind, big
 		return err
 	}
 
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, t.sequence)
+	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err != nil {
 		return nil
-	}
-	if resp.Events != nil {
-		t.sequence += uint32(len(resp.Events.Pages))
 	}
 	return nil
 }
@@ -697,14 +675,11 @@ func (ac *AcceptanceContext) createFiveCardDrawTable(name string, smallBlind, bi
 		return err
 	}
 
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, t.sequence)
+	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err != nil {
 		return nil
-	}
-	if resp.Events != nil {
-		t.sequence += uint32(len(resp.Events.Pages))
 	}
 	return nil
 }
@@ -727,14 +702,11 @@ func (ac *AcceptanceContext) createOmahaTable(name string, smallBlind, bigBlind 
 		return err
 	}
 
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, t.sequence)
+	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err != nil {
 		return nil
-	}
-	if resp.Events != nil {
-		t.sequence += uint32(len(resp.Events.Pages))
 	}
 	return nil
 }
@@ -753,14 +725,11 @@ func (ac *AcceptanceContext) playerJoinsTable(playerName, tableName string, seat
 		return err
 	}
 
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, t.sequence)
+	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err != nil {
 		return nil
-	}
-	if resp.Events != nil {
-		t.sequence += uint32(len(resp.Events.Pages))
 	}
 	return nil
 }
@@ -777,14 +746,11 @@ func (ac *AcceptanceContext) playerLeavesTable(playerName, tableName string) err
 		return err
 	}
 
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, t.sequence)
+	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err != nil {
 		return nil
-	}
-	if resp.Events != nil {
-		t.sequence += uint32(len(resp.Events.Pages))
 	}
 	return nil
 }
@@ -824,14 +790,11 @@ func (ac *AcceptanceContext) tableWithSeatedPlayers(tableName string, table *god
 	if err != nil {
 		return err
 	}
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, t.sequence)
+	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err != nil {
 		return fmt.Errorf("failed to create table %s: %v", tableName, err)
-	}
-	if resp.Events != nil {
-		t.sequence += uint32(len(resp.Events.Pages))
 	}
 
 	for _, row := range table.Rows[1:] {
@@ -880,14 +843,11 @@ func (ac *AcceptanceContext) tableWithNSeatedPlayers(tableName string, count int
 	if err != nil {
 		return err
 	}
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, t.sequence)
+	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err != nil {
 		return fmt.Errorf("failed to create table %s: %v", tableName, err)
-	}
-	if resp.Events != nil {
-		t.sequence += uint32(len(resp.Events.Pages))
 	}
 
 	for i := 0; i < count; i++ {
@@ -982,14 +942,9 @@ func (ac *AcceptanceContext) tableWithNoSeatedPlayers() error {
 	if err != nil {
 		return err
 	}
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, t.sequence)
+	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
 	ac.lastResp = resp
 	ac.lastError = err
-	if err == nil {
-		if resp.Events != nil {
-			t.sequence += uint32(len(resp.Events.Pages))
-		}
-	}
 	return nil
 }
 
@@ -1010,14 +965,11 @@ func (ac *AcceptanceContext) sendStartHandCommand(tableName string) error {
 		return err
 	}
 
-	resp, err := ac.client.SendCommand("table", t.root, cmdAny, t.sequence)
+	resp, err := ac.client.SendCommand("table", t.root, cmdAny, 0)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err != nil {
 		return nil
-	}
-	if resp.Events != nil {
-		t.sequence += uint32(len(resp.Events.Pages))
 	}
 	ac.getOrCreateHand(tableName)
 	return nil
@@ -1131,14 +1083,11 @@ func (ac *AcceptanceContext) sendPlayerAction(playerName string, action examples
 		return err
 	}
 
-	resp, err := ac.client.SendCommand("hand", h.root, cmdAny, h.sequence)
+	resp, err := ac.client.SendCommand("hand", h.root, cmdAny, 0)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err != nil {
 		return nil
-	}
-	if resp.Events != nil {
-		h.sequence += uint32(len(resp.Events.Pages))
 	}
 	return nil
 }
@@ -1193,15 +1142,12 @@ func (ac *AcceptanceContext) playerFoldsCascade(playerName string) error {
 		return err
 	}
 
-	resp, err := ac.client.SendCommandWithMode("hand", h.root, cmdAny, h.sequence,
+	resp, err := ac.client.SendCommandWithMode("hand", h.root, cmdAny, 0,
 		pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err != nil {
 		return nil
-	}
-	if resp.Events != nil {
-		h.sequence += uint32(len(resp.Events.Pages))
 	}
 	return nil
 }
@@ -1528,15 +1474,12 @@ func (ac *AcceptanceContext) startHandWithMode(tableName string, syncMode pb.Syn
 	}
 
 	ac.syncTestStartTime = time.Now()
-	resp, err := ac.client.SendCommandWithMode("table", t.root, cmdAny, t.sequence,
+	resp, err := ac.client.SendCommandWithMode("table", t.root, cmdAny, 0,
 		syncMode, cascadeErrorMode)
 	ac.lastResp = resp
 	ac.lastError = err
 	if err != nil {
 		return nil
-	}
-	if resp.Events != nil {
-		t.sequence += uint32(len(resp.Events.Pages))
 	}
 	ac.getOrCreateHand(tableName)
 	return nil
