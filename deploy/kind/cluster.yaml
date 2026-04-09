@@ -6,13 +6,10 @@ nodes:
   - role: control-plane
     image: kindest/node:v1.31.0
     extraPortMappings:
-      - containerPort: 31310  # Player aggregate coordinator
         hostPort: 1310
         protocol: TCP
-      - containerPort: 31311  # Table aggregate coordinator
         hostPort: 1311
         protocol: TCP
-      - containerPort: 31312  # Hand aggregate coordinator
         hostPort: 1312
         protocol: TCP
       - containerPort: 30084

@@ -285,14 +285,8 @@ jobs:
             --set images.gateway.tag="${COORD_VER}" \
             --set images.log.tag="${COORD_VER}" \
             --set "applications.business[0].image.tag=${TAG}" \
-            --set "applications.business[0].debug.enabled=true" \
-            --set "applications.business[0].debug.nodePort=31310" \
             --set "applications.business[1].image.tag=${TAG}" \
-            --set "applications.business[1].debug.enabled=true" \
-            --set "applications.business[1].debug.nodePort=31311" \
             --set "applications.business[2].image.tag=${TAG}" \
-            --set "applications.business[2].debug.enabled=true" \
-            --set "applications.business[2].debug.nodePort=31312" \
             --set "applications.sagas[0].image.tag=${TAG}" \
             --set "applications.sagas[1].image.tag=${TAG}" \
             --set "applications.sagas[2].image.tag=${TAG}" \
@@ -372,7 +366,12 @@ jobs:
           PLAYER_URL: "localhost:1310"
           TABLE_URL: "localhost:1311"
           HAND_URL: "localhost:1312"
-        run: go test -v -tags=acceptance -count=1 ./tests/ -timeout=600s
+        run: |
+          kubectl port-forward -n angzarr-test svc/player-aggregate 1310:1310 &
+          kubectl port-forward -n angzarr-test svc/table-aggregate 1311:1310 &
+          kubectl port-forward -n angzarr-test svc/hand-aggregate 1312:1310 &
+          sleep 3
+          go test -v -tags=acceptance -count=1 ./tests/ -timeout=600s
 
       - name: Show logs on failure
         if: failure()
