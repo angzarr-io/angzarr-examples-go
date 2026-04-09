@@ -98,7 +98,7 @@ func HandleJoinTable(_ *pb.EventBook, cmdAny *anypb.Any, state TableState) (*any
 	}
 
 	// Determine seat position
-	seatPos := int32(-1)
+	var seatPos int32
 	if cmd.PreferredSeat >= 0 && cmd.PreferredSeat < state.MaxPlayers {
 		// Specific seat requested
 		if _, occupied := state.Seats[cmd.PreferredSeat]; occupied {

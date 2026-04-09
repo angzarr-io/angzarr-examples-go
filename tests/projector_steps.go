@@ -8,6 +8,8 @@ import (
 
 	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
 	"github.com/cucumber/godog"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -161,40 +163,40 @@ func (p *OutputProjector) getPlayerName(rootID string) string {
 func (p *OutputProjector) handleEvent(event *anypb.Any) {
 	if event.MessageIs(&examples.PlayerRegistered{}) {
 		var e examples.PlayerRegistered
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		p.output.WriteString(fmt.Sprintf("%s registered\n", e.DisplayName))
 	} else if event.MessageIs(&examples.FundsDeposited{}) {
 		var e examples.FundsDeposited
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		p.output.WriteString(fmt.Sprintf("Deposited %s - balance: %s\n", formatCurrency(e.Amount), formatCurrency(e.NewBalance)))
 	} else if event.MessageIs(&examples.FundsWithdrawn{}) {
 		var e examples.FundsWithdrawn
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		p.output.WriteString(fmt.Sprintf("Withdrew %s - balance: %s\n", formatCurrency(e.Amount), formatCurrency(e.NewBalance)))
 	} else if event.MessageIs(&examples.FundsReserved{}) {
 		var e examples.FundsReserved
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		p.output.WriteString(fmt.Sprintf("Reserved %s\n", formatCurrency(e.Amount)))
 	} else if event.MessageIs(&examples.TableCreated{}) {
 		var e examples.TableCreated
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		p.output.WriteString(fmt.Sprintf("Table: %s - %s - %s/%s - Buy-in: %s - %s\n",
 			e.TableName, e.GameVariant.String(),
 			formatMoney(e.SmallBlind), formatMoney(e.BigBlind),
 			formatMoney(e.MinBuyIn), formatMoney(e.MaxBuyIn)))
 	} else if event.MessageIs(&examples.PlayerJoined{}) {
 		var e examples.PlayerJoined
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		name := p.getPlayerName(string(e.PlayerRoot))
 		p.output.WriteString(fmt.Sprintf("%s joined at seat %d with %s\n", name, e.SeatPosition, formatMoney(e.BuyInAmount)))
 	} else if event.MessageIs(&examples.PlayerLeft{}) {
 		var e examples.PlayerLeft
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		name := p.getPlayerName(string(e.PlayerRoot))
 		p.output.WriteString(fmt.Sprintf("%s left with %s\n", name, formatMoney(e.ChipsCashedOut)))
 	} else if event.MessageIs(&examples.HandStarted{}) {
 		var e examples.HandStarted
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		p.output.WriteString(fmt.Sprintf("=== HAND #%d ===\n", e.HandNumber))
 		p.output.WriteString(fmt.Sprintf("Dealer: Seat %d\n", e.DealerPosition))
 		for _, player := range e.ActivePlayers {
@@ -203,14 +205,14 @@ func (p *OutputProjector) handleEvent(event *anypb.Any) {
 		}
 	} else if event.MessageIs(&examples.HandEnded{}) {
 		var e examples.HandEnded
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		if len(e.Results) > 0 {
 			name := p.getPlayerName(string(e.Results[0].WinnerRoot))
 			p.output.WriteString(fmt.Sprintf("%s wins %s\n", name, formatMoney(e.Results[0].Amount)))
 		}
 	} else if event.MessageIs(&examples.CardsDealt{}) {
 		var e examples.CardsDealt
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		for _, hole := range e.PlayerCards {
 			name := p.getPlayerName(string(hole.PlayerRoot))
 			cards := ""
@@ -224,13 +226,13 @@ func (p *OutputProjector) handleEvent(event *anypb.Any) {
 		}
 	} else if event.MessageIs(&examples.BlindPosted{}) {
 		var e examples.BlindPosted
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		name := p.getPlayerName(string(e.PlayerRoot))
 		blindType := strings.ToUpper(e.BlindType)
 		p.output.WriteString(fmt.Sprintf("%s posts %s %s\n", name, blindType, formatMoney(e.Amount)))
 	} else if event.MessageIs(&examples.ActionTaken{}) {
 		var e examples.ActionTaken
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		name := p.getPlayerName(string(e.PlayerRoot))
 		switch e.Action {
 		case examples.ActionType_FOLD:
@@ -248,7 +250,7 @@ func (p *OutputProjector) handleEvent(event *anypb.Any) {
 		}
 	} else if event.MessageIs(&examples.CommunityCardsDealt{}) {
 		var e examples.CommunityCardsDealt
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		cards := ""
 		for _, card := range e.Cards {
 			if cards != "" {
@@ -256,7 +258,7 @@ func (p *OutputProjector) handleEvent(event *anypb.Any) {
 			}
 			cards += formatCard(card.Suit, card.Rank)
 		}
-		phase := strings.Title(strings.ToLower(e.Phase.String()))
+		phase := cases.Title(language.English).String(strings.ToLower(e.Phase.String()))
 		p.output.WriteString(fmt.Sprintf("%s: [%s]\n", phase, cards))
 		// Also show full board
 		allCards := ""
@@ -271,7 +273,7 @@ func (p *OutputProjector) handleEvent(event *anypb.Any) {
 		p.output.WriteString("=== SHOWDOWN ===\n")
 	} else if event.MessageIs(&examples.CardsRevealed{}) {
 		var e examples.CardsRevealed
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		name := p.getPlayerName(string(e.PlayerRoot))
 		cards := ""
 		for _, card := range e.Cards {
@@ -282,24 +284,24 @@ func (p *OutputProjector) handleEvent(event *anypb.Any) {
 		}
 		ranking := "Unknown"
 		if e.Ranking != nil {
-			ranking = strings.Title(strings.ToLower(e.Ranking.RankType.String()))
+			ranking = cases.Title(language.English).String(strings.ToLower(e.Ranking.RankType.String()))
 		}
 		p.output.WriteString(fmt.Sprintf("%s shows [%s] - %s\n", name, cards, ranking))
 	} else if event.MessageIs(&examples.CardsMucked{}) {
 		var e examples.CardsMucked
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		name := p.getPlayerName(string(e.PlayerRoot))
 		p.output.WriteString(fmt.Sprintf("%s mucks\n", name))
 	} else if event.MessageIs(&examples.PotAwarded{}) {
 		var e examples.PotAwarded
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		for _, winner := range e.Winners {
 			name := p.getPlayerName(string(winner.PlayerRoot))
 			p.output.WriteString(fmt.Sprintf("%s wins %s\n", name, formatMoney(winner.Amount)))
 		}
 	} else if event.MessageIs(&examples.HandComplete{}) {
 		var e examples.HandComplete
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		p.output.WriteString("Final stacks:\n")
 		for _, player := range e.FinalStacks {
 			name := p.getPlayerName(string(player.PlayerRoot))
@@ -311,7 +313,7 @@ func (p *OutputProjector) handleEvent(event *anypb.Any) {
 		}
 	} else if event.MessageIs(&examples.PlayerTimedOut{}) {
 		var e examples.PlayerTimedOut
-		event.UnmarshalTo(&e)
+		_ = event.UnmarshalTo(&e)
 		name := p.getPlayerName(string(e.PlayerRoot))
 		action := strings.ToLower(e.DefaultAction.String())
 		p.output.WriteString(fmt.Sprintf("%s timed out - auto %ss\n", name, action))
@@ -448,7 +450,7 @@ func activePlayersAtSeats(name1, name2, name3 string, seat1, seat2, seat3 int) e
 
 	// Update the HandStarted event with players
 	var e examples.HandStarted
-	projCtx.sourceEvent.UnmarshalTo(&e)
+	_ = projCtx.sourceEvent.UnmarshalTo(&e)
 	e.ActivePlayers = []*examples.SeatSnapshot{
 		{PlayerRoot: parseUUID(fmt.Sprintf("player-%d", seat1)), Position: int32(seat1), Stack: 500},
 		{PlayerRoot: parseUUID(fmt.Sprintf("player-%d", seat2)), Position: int32(seat2), Stack: 500},

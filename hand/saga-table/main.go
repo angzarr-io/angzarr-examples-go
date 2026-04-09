@@ -12,32 +12,12 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-// prepareHandComplete declares the table aggregate as destination.
-func prepareHandComplete(source *pb.EventBook, event *anypb.Any) []*pb.Cover {
-	var handComplete examples.HandComplete
-	if err := proto.Unmarshal(event.Value, &handComplete); err != nil {
-		return nil
-	}
-
-	return []*pb.Cover{
-		{
-			Domain: "table",
-			Root:   &pb.UUID{Value: handComplete.TableRoot},
-		},
-	}
-}
-
 // handleHandComplete translates HandComplete → EndHand.
-func handleHandComplete(source *pb.EventBook, event *anypb.Any, destinations []*pb.EventBook) ([]*pb.CommandBook, error) {
+// Destinations are now config-driven; sequence stamping uses Destinations helper.
+func handleHandComplete(source *pb.EventBook, event *anypb.Any, destinations *angzarr.Destinations) ([]*pb.CommandBook, error) {
 	var handComplete examples.HandComplete
 	if err := proto.Unmarshal(event.Value, &handComplete); err != nil {
 		return nil, err
-	}
-
-	// Get next sequence from destination state
-	var destSeq uint32
-	if len(destinations) > 0 {
-		destSeq = angzarr.NextSequence(destinations[0])
 	}
 
 	// Get correlation ID and hand_root from source
@@ -72,27 +52,31 @@ func handleHandComplete(source *pb.EventBook, event *anypb.Any, destinations []*
 		return nil, err
 	}
 
-	return []*pb.CommandBook{
-		{
-			Cover: &pb.Cover{
-				Domain:        "table",
-				Root:          &pb.UUID{Value: handComplete.TableRoot},
-				CorrelationId: correlationID,
-			},
-			Pages: []*pb.CommandPage{
-				{
-					Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_Sequence{Sequence: destSeq}},
-					Payload: &pb.CommandPage_Command{Command: cmdAny},
-				},
+	cmd := &pb.CommandBook{
+		Cover: &pb.Cover{
+			Domain:        "table",
+			Root:          &pb.UUID{Value: handComplete.TableRoot},
+			CorrelationId: correlationID,
+		},
+		Pages: []*pb.CommandPage{
+			{
+				Header:  &pb.PageHeader{SequenceType: &pb.PageHeader_AngzarrDeferred{AngzarrDeferred: &pb.AngzarrDeferredSequence{}}},
+				Payload: &pb.CommandPage_Command{Command: cmdAny},
 			},
 		},
-	}, nil
+	}
+
+	// Stamp with destination sequence if available
+	if destinations.Has("table") {
+		_ = destinations.StampCommand(cmd, "table")
+	}
+
+	return []*pb.CommandBook{cmd}, nil
 }
 
 func main() {
 	router := angzarr.NewEventRouter("saga-hand-table").
 		Domain("hand").
-		Prepare("HandComplete", prepareHandComplete).
 		On("HandComplete", handleHandComplete)
 
 	angzarr.RunSagaServer("saga-hand-table", "50212", router)

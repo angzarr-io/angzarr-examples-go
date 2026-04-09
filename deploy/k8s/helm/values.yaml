@@ -46,7 +46,7 @@ images:
     pullPolicy: IfNotPresent
     tag: "latest"
   gateway:
-    repository: ghcr.io/angzarr-io/angzarr-gateway
+    repository: ghcr.io/angzarr-io/angzarr-grpc-gateway
     pullPolicy: IfNotPresent
     tag: "latest"
   log:
@@ -115,11 +115,11 @@ infrastructure:
   gateway:
     enabled: true
     replicas: 1
-    port: 9084
+    port: 8080
     serviceType: NodePort
     nodePort: 30084
-    streamService: "angzarr-stream:1340"
-    streamTimeoutSecs: 30
+    grpcTarget: "player-aggregate:1310"
+    descriptorConfigMap: "gateway-descriptor"
     resources:
       requests:
         memory: "64Mi"
@@ -143,90 +143,97 @@ infrastructure:
 # Business applications - each gets angzarr as sidecar
 applications:
   business:
-    # E-commerce Domain Aggregates (Go: 50100-50199)
-    - name: agg-order-go
+    # Poker Domain Aggregates (Go: 50200-50299)
+    - name: poker-player
       image:
-        repository: ghcr.io/angzarr-io/agg-order-go
+        repository: ghcr.io/angzarr-io/examples-go-agg-player
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "order"
-      port: 50100        # order gRPC (50100-50102)
+      domain: "player"
+      port: 50201
 
-    - name: agg-inventory-go
+    - name: poker-table
       image:
-        repository: ghcr.io/angzarr-io/agg-inventory-go
+        repository: ghcr.io/angzarr-io/examples-go-agg-table
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "inventory"
-      port: 50103        # inventory gRPC (50103-50105)
+      domain: "table"
+      port: 50202
 
-    - name: agg-fulfillment-go
+    - name: poker-hand
       image:
-        repository: ghcr.io/angzarr-io/agg-fulfillment-go
+        repository: ghcr.io/angzarr-io/examples-go-agg-hand
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "fulfillment"
-      port: 50106        # fulfillment gRPC (50106-50108)
-
-  projectors:
-    # Inventory Projector - logs inventory stock changes
-    - name: prj-inventory-go
-      image:
-        repository: ghcr.io/angzarr-io/prj-inventory-go
-        tag: "latest"
-        pullPolicy: IfNotPresent
-      domain: "inventory"
-      port: 50133        # prj-inventory gRPC (50133-50135)
-      topics:
-        - "inventory"
+      domain: "hand"
+      port: 50203
 
   sagas:
-    # Order-Fulfillment Saga - creates shipments when orders complete
-    - name: sag-order-fulfillment-go
+    - name: saga-table-hand
       image:
-        repository: ghcr.io/angzarr-io/sag-order-fulfillment-go
+        repository: ghcr.io/angzarr-io/examples-go-saga-table-hand
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "sag-order-fulfillment"
-      port: 50118        # sag-order-fulfillment gRPC (50118-50120)
+      domain: "saga-table-hand"
+      port: 50211
       topics:
-        - "order.*"
+        - "table.*"
 
-    # Order-Inventory Saga - reserves stock when orders are created
-    - name: sag-order-inventory-go
+    - name: saga-table-player
       image:
-        repository: ghcr.io/angzarr-io/sag-order-inventory-go
+        repository: ghcr.io/angzarr-io/examples-go-saga-table-player
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "sag-order-inventory"
-      port: 50121        # sag-order-inventory gRPC (50121-50123)
+      domain: "saga-table-player"
+      port: 50212
       topics:
-        - "order.*"
+        - "table.*"
 
-    # Fulfillment-Inventory Saga - commits inventory when shipments ship
-    - name: sag-fulfillment-inventory-go
+    - name: saga-hand-table
       image:
-        repository: ghcr.io/angzarr-io/sag-fulfillment-inventory-go
+        repository: ghcr.io/angzarr-io/examples-go-saga-hand-table
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "sag-fulfillment-inventory"
-      port: 50124        # sag-fulfillment-inventory gRPC (50124-50126)
+      domain: "saga-hand-table"
+      port: 50213
       topics:
-        - "fulfillment.*"
+        - "hand.*"
+
+    - name: saga-hand-player
+      image:
+        repository: ghcr.io/angzarr-io/examples-go-saga-hand-player
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "saga-hand-player"
+      port: 50214
+      topics:
+        - "hand.*"
+
+  projectors:
+    - name: prj-output
+      image:
+        repository: ghcr.io/angzarr-io/examples-go-prj-output
+        tag: "latest"
+        pullPolicy: IfNotPresent
+      domain: "output"
+      port: 50290
+      topics:
+        - "player.*"
+        - "table.*"
+        - "hand.*"
 
   processManagers:
-    # Order Fulfillment PM - fan-in: payment + inventory + fulfillment -> Ship
-    - name: pmg-fulfillment-go
+    - name: pmg-hand-flow
       image:
-        repository: ghcr.io/angzarr-io/pmg-fulfillment-go
+        repository: ghcr.io/angzarr-io/examples-go-pmg-hand-flow
         tag: "latest"
         pullPolicy: IfNotPresent
-      domain: "pmg-fulfillment"
-      port: 50139        # pmg-fulfillment gRPC (50139-50141)
+      domain: "pmg-hand-flow"
+      port: 50291
       topics:
-        - "order.*"
-        - "inventory.*"
-        - "fulfillment.*"
+        - "player.*"
+        - "table.*"
+        - "hand.*"
 
 # Service configuration
 service:

@@ -43,7 +43,7 @@ func HandleDealCards(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*anyp
 	seed := cmd.DeckSeed
 	if len(seed) == 0 {
 		seed = make([]byte, 32)
-		rand.Read(seed)
+		_, _ = rand.Read(seed)
 	}
 	shuffleDeck(deck, seed)
 

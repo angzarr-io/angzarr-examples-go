@@ -68,7 +68,6 @@ type PMContext struct {
 	process        *HandProcess
 	sourceEvent    *anypb.Any
 	resultCommands []string
-	lastError      error
 	timedOut       bool
 }
 
@@ -194,25 +193,6 @@ func aHandStartedEventWith(table *godog.Table) error {
 	} else {
 		// Projector format - delegate to projector handler
 		return aHandStartedEventWithForProjector(table)
-	}
-	return nil
-}
-
-// activePlayersForPM populates the PM process with active players
-func activePlayersForPM(table *godog.Table) error {
-	if pmCtx.process == nil {
-		pmCtx.process = &HandProcess{Players: make(map[int32]*PMPlayerState)}
-	}
-	for _, row := range table.Rows[1:] {
-		playerRoot := parseUUID(row.Cells[0].Value)
-		position := parseInt32(row.Cells[1].Value)
-		stack := parseInt64(row.Cells[2].Value)
-
-		pmCtx.process.Players[position] = &PMPlayerState{
-			PlayerRoot: playerRoot,
-			Position:   position,
-			Stack:      stack,
-		}
 	}
 	return nil
 }
@@ -447,7 +427,7 @@ func theProcessManagerHandlesTheEvent() error {
 		pmCtx.resultCommands = append(pmCtx.resultCommands, "PostBlind:small")
 	} else if pmCtx.sourceEvent.MessageIs(&examples.BlindPosted{}) {
 		var bp examples.BlindPosted
-		pmCtx.sourceEvent.UnmarshalTo(&bp)
+		_ = pmCtx.sourceEvent.UnmarshalTo(&bp)
 		if bp.BlindType == "small" {
 			pmCtx.process.SmallBlindPosted = true
 			pmCtx.resultCommands = append(pmCtx.resultCommands, "PostBlind:big")
@@ -458,7 +438,7 @@ func theProcessManagerHandlesTheEvent() error {
 		}
 	} else if pmCtx.sourceEvent.MessageIs(&examples.ActionTaken{}) {
 		var at examples.ActionTaken
-		pmCtx.sourceEvent.UnmarshalTo(&at)
+		_ = pmCtx.sourceEvent.UnmarshalTo(&at)
 
 		// Find the player
 		for pos, p := range pmCtx.process.Players {

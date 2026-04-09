@@ -34,6 +34,7 @@ func NewHandPlayerSaga() *HandPlayerSaga {
 // Sagas are stateless translators - framework handles sequence stamping.
 func (s *HandPlayerSaga) handlePotAwarded(
 	event *examples.PotAwarded,
+	dests []*pb.EventBook,
 ) ([]*pb.CommandBook, error) {
 	var commands []*pb.CommandBook
 
@@ -66,6 +67,11 @@ func (s *HandPlayerSaga) handlePotAwarded(
 	}
 
 	return commands, nil
+}
+
+// Handle satisfies the OOSaga interface (destinations parameter added in 0.5.0).
+func (s *HandPlayerSaga) Handle(source *pb.EventBook, _ *angzarr.Destinations) (*angzarr.SagaHandlerResponse, error) {
+	return s.SagaBase.Handle(source)
 }
 
 func main() {
