@@ -616,8 +616,8 @@ func (ac *AcceptanceContext) depositChipsToAllPlayersAsync() error {
 		ac.lastError = err
 		if err == nil {
 			if resp.Events != nil {
-		p.sequence += uint32(len(resp.Events.Pages))
-	}
+				p.sequence += uint32(len(resp.Events.Pages))
+			}
 		}
 	}
 	return nil
@@ -987,8 +987,8 @@ func (ac *AcceptanceContext) tableWithNoSeatedPlayers() error {
 	ac.lastError = err
 	if err == nil {
 		if resp.Events != nil {
-		t.sequence += uint32(len(resp.Events.Pages))
-	}
+			t.sequence += uint32(len(resp.Events.Pages))
+		}
 	}
 	return nil
 }
