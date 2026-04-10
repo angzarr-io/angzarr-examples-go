@@ -16,16 +16,16 @@ import (
 // OrchestrationContext holds state for orchestration PM tests.
 type OrchestrationContext struct {
 	// Table state for buy-in validation
-	tableMinBuyIn  int64
-	tableMaxBuyIn  int64
+	tableMinBuyIn   int64
+	tableMaxBuyIn   int64
 	tableMaxPlayers int32
-	occupiedSeats  map[int32]bool
+	occupiedSeats   map[int32]bool
 
 	// Tournament state for registration/rebuy validation
-	tournamentRegistrationOpen bool
+	tournamentRegistrationOpen  bool
 	tournamentCapacityAvailable bool
-	tournamentRebuyWindowOpen  bool
-	playerEligibleForRebuy     bool
+	tournamentRebuyWindowOpen   bool
+	playerEligibleForRebuy      bool
 
 	// Table state for rebuy validation
 	playerSeatedPosition int32
@@ -37,10 +37,10 @@ type OrchestrationContext struct {
 	triggerFee    int64
 
 	// Pending state flags (for confirmation/rejection flows)
-	pendingBuyIn         bool
-	pendingRegistration  bool
-	pendingRebuy         bool
-	pendingRebuyChips    bool
+	pendingBuyIn        bool
+	pendingRegistration bool
+	pendingRebuy        bool
+	pendingRebuyChips   bool
 
 	// Results
 	emittedCommands []string // command type names (e.g. "SeatPlayer", "ConfirmBuyIn")
@@ -48,20 +48,20 @@ type OrchestrationContext struct {
 	failureCode     string   // failure code if rejection occurred
 
 	// Shared identifiers for the flow
-	playerRoot    []byte
-	tableRoot     []byte
+	playerRoot     []byte
+	tableRoot      []byte
 	tournamentRoot []byte
-	reservationID []byte
+	reservationID  []byte
 }
 
 // NewOrchestrationContext creates a fresh orchestration context.
 func NewOrchestrationContext() *OrchestrationContext {
 	return &OrchestrationContext{
-		occupiedSeats:  make(map[int32]bool),
-		playerRoot:     parseUUID("orch-player-1"),
-		tableRoot:      parseUUID("orch-table-1"),
-		tournamentRoot: parseUUID("orch-tournament-1"),
-		reservationID:  uuid.New().NodeID(),
+		occupiedSeats:        make(map[int32]bool),
+		playerRoot:           parseUUID("orch-player-1"),
+		tableRoot:            parseUUID("orch-table-1"),
+		tournamentRoot:       parseUUID("orch-tournament-1"),
+		reservationID:        uuid.New().NodeID(),
 		playerSeatedPosition: -1,
 	}
 }
@@ -395,8 +395,8 @@ func theBuyInOrchestratorHandlesSeatingRejected() error {
 		TableRoot:     orchCtx.tableRoot,
 		ReservationId: orchCtx.reservationID,
 		Failure: &examples.OrchestrationFailure{
-			Code:    "SEATING_REJECTED",
-			Message: "table rejected seating request",
+			Code:     "SEATING_REJECTED",
+			Message:  "table rejected seating request",
 			FailedAt: timestamppb.Now(),
 		},
 	}
