@@ -398,10 +398,10 @@ func HandleRevealCards(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*an
 		return anypb.New(event)
 	}
 
-	handRank := evaluateHand(state.GameVariant, player.HoleCards, state.CommunityCards)
+	handRank := EvaluateHand(state.GameVariant, player.HoleCards, state.CommunityCards)
 	ranking := &examples.HandRanking{
-		RankType: handRank.rankType,
-		Score:    handRank.score,
+		RankType: handRank.RankType,
+		Score:    handRank.Score,
 	}
 
 	event := &examples.CardsRevealed{
@@ -556,32 +556,36 @@ func getCardsPerPlayer(variant examples.GameVariant) int {
 
 // Hand evaluation helpers
 
-type handRank struct {
-	rankType examples.HandRankType
-	score    int32
+// HandRank holds the result of a hand evaluation.
+type HandRank struct {
+	RankType examples.HandRankType
+	Score    int32
 }
 
-func evaluateHand(variant examples.GameVariant, holeCards, communityCards []*examples.Card) *handRank {
+type handRank = HandRank
+
+// EvaluateHand evaluates a poker hand given the game variant, hole cards, and community cards.
+func EvaluateHand(variant examples.GameVariant, holeCards, communityCards []*examples.Card) *HandRank {
 	switch variant {
 	case examples.GameVariant_TEXAS_HOLDEM:
 		allCards := append(holeCards, communityCards...)
 		if len(allCards) < 5 {
-			return &handRank{rankType: examples.HandRankType_HIGH_CARD, score: 0}
+			return &HandRank{RankType: examples.HandRankType_HIGH_CARD, Score: 0}
 		}
 		return findBestFive(allCards)
 	case examples.GameVariant_FIVE_CARD_DRAW:
 		if len(holeCards) < 5 {
-			return &handRank{rankType: examples.HandRankType_HIGH_CARD, score: 0}
+			return &HandRank{RankType: examples.HandRankType_HIGH_CARD, Score: 0}
 		}
 		return evaluateFive(holeCards[:5])
 	default:
-		return &handRank{rankType: examples.HandRankType_HIGH_CARD, score: 0}
+		return &HandRank{RankType: examples.HandRankType_HIGH_CARD, Score: 0}
 	}
 }
 
 func findBestFive(cards []*examples.Card) *handRank {
 	if len(cards) < 5 {
-		return &handRank{rankType: examples.HandRankType_HIGH_CARD, score: 0}
+		return &HandRank{RankType: examples.HandRankType_HIGH_CARD, Score: 0}
 	}
 
 	var bestRank *handRank
@@ -589,20 +593,20 @@ func findBestFive(cards []*examples.Card) *handRank {
 	combos := combinations(cards, 5)
 	for _, combo := range combos {
 		rank := evaluateFive(combo)
-		if bestRank == nil || rank.score > bestRank.score {
+		if bestRank == nil || rank.Score > bestRank.Score {
 			bestRank = rank
 		}
 	}
 
 	if bestRank == nil {
-		return &handRank{rankType: examples.HandRankType_HIGH_CARD, score: 0}
+		return &HandRank{RankType: examples.HandRankType_HIGH_CARD, Score: 0}
 	}
 	return bestRank
 }
 
 func evaluateFive(cards []*examples.Card) *handRank {
 	if len(cards) != 5 {
-		return &handRank{rankType: examples.HandRankType_HIGH_CARD, score: 0}
+		return &HandRank{RankType: examples.HandRankType_HIGH_CARD, Score: 0}
 	}
 
 	rankCounts := make(map[int32]int)
@@ -655,13 +659,13 @@ func evaluateFive(cards []*examples.Card) *handRank {
 		}
 		if high == int32(examples.Rank_ACE) && !isWheel {
 			return &handRank{
-				rankType: examples.HandRankType_ROYAL_FLUSH,
-				score:    10_000_000,
+				RankType: examples.HandRankType_ROYAL_FLUSH,
+				Score:    10_000_000,
 			}
 		}
 		return &handRank{
-			rankType: examples.HandRankType_STRAIGHT_FLUSH,
-			score:    9_000_000 + high,
+			RankType: examples.HandRankType_STRAIGHT_FLUSH,
+			Score:    9_000_000 + high,
 		}
 	}
 
@@ -669,8 +673,8 @@ func evaluateFive(cards []*examples.Card) *handRank {
 		quadRank := counts[0].rank
 		kicker := counts[1].rank
 		return &handRank{
-			rankType: examples.HandRankType_FOUR_OF_A_KIND,
-			score:    8_000_000 + quadRank*100 + kicker,
+			RankType: examples.HandRankType_FOUR_OF_A_KIND,
+			Score:    8_000_000 + quadRank*100 + kicker,
 		}
 	}
 
@@ -678,16 +682,16 @@ func evaluateFive(cards []*examples.Card) *handRank {
 		tripsRank := counts[0].rank
 		pairRank := counts[1].rank
 		return &handRank{
-			rankType: examples.HandRankType_FULL_HOUSE,
-			score:    7_000_000 + tripsRank*100 + pairRank,
+			RankType: examples.HandRankType_FULL_HOUSE,
+			Score:    7_000_000 + tripsRank*100 + pairRank,
 		}
 	}
 
 	if isFlush {
 		score := rankScore(ranks)
 		return &handRank{
-			rankType: examples.HandRankType_FLUSH,
-			score:    6_000_000 + score,
+			RankType: examples.HandRankType_FLUSH,
+			Score:    6_000_000 + score,
 		}
 	}
 
@@ -697,16 +701,16 @@ func evaluateFive(cards []*examples.Card) *handRank {
 			high = 5
 		}
 		return &handRank{
-			rankType: examples.HandRankType_STRAIGHT,
-			score:    5_000_000 + high,
+			RankType: examples.HandRankType_STRAIGHT,
+			Score:    5_000_000 + high,
 		}
 	}
 
 	if len(countPattern) >= 3 && countPattern[0] == 3 && countPattern[1] == 1 && countPattern[2] == 1 {
 		tripsRank := counts[0].rank
 		return &handRank{
-			rankType: examples.HandRankType_THREE_OF_A_KIND,
-			score:    4_000_000 + tripsRank*1000,
+			RankType: examples.HandRankType_THREE_OF_A_KIND,
+			Score:    4_000_000 + tripsRank*1000,
 		}
 	}
 
@@ -715,23 +719,23 @@ func evaluateFive(cards []*examples.Card) *handRank {
 		lowPair := counts[1].rank
 		kicker := counts[2].rank
 		return &handRank{
-			rankType: examples.HandRankType_TWO_PAIR,
-			score:    3_000_000 + highPair*1000 + lowPair*50 + kicker,
+			RankType: examples.HandRankType_TWO_PAIR,
+			Score:    3_000_000 + highPair*1000 + lowPair*50 + kicker,
 		}
 	}
 
 	if len(countPattern) >= 4 && countPattern[0] == 2 {
 		pairRank := counts[0].rank
 		return &handRank{
-			rankType: examples.HandRankType_PAIR,
-			score:    2_000_000 + pairRank*10000,
+			RankType: examples.HandRankType_PAIR,
+			Score:    2_000_000 + pairRank*10000,
 		}
 	}
 
 	score := rankScore(ranks)
 	return &handRank{
-		rankType: examples.HandRankType_HIGH_CARD,
-		score:    1_000_000 + score,
+		RankType: examples.HandRankType_HIGH_CARD,
+		Score:    1_000_000 + score,
 	}
 }
 

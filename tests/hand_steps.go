@@ -16,13 +16,25 @@ import (
 )
 
 // HandContext holds state for hand aggregate scenarios
+type showdownHand struct {
+	holeCards      []*examples.Card
+	communityCards []*examples.Card
+}
+
+type evaluationResult struct {
+	rankType examples.HandRankType
+	score    int32
+}
+
 type HandContext struct {
-	eventPages   []*pb.EventPage
-	state        handlers.HandState
-	resultEvent  *anypb.Any
-	resultEvents []*anypb.Any
-	lastError    error
-	playerRoots  map[string][]byte // name -> root bytes
+	eventPages        []*pb.EventPage
+	state             handlers.HandState
+	resultEvent       *anypb.Any
+	resultEvents      []*anypb.Any
+	lastError         error
+	playerRoots       map[string][]byte // name -> root bytes
+	showdownHands     map[string]*showdownHand
+	evaluationResults map[string]*evaluationResult
 }
 
 func newHandContext() *HandContext {
@@ -498,11 +510,17 @@ func (hc *HandContext) playerFolded(playerName string) error {
 }
 
 func (hc *HandContext) showdownWithHands(table *godog.Table) error {
-	_ = hc.showdownStarted()
+	// Table format: | player | hole_cards | community_cards |
+	// Store hands for evaluation in handsEvaluated step
+	hc.showdownHands = make(map[string]*showdownHand)
 	for _, row := range table.Rows[1:] {
 		playerName := row.Cells[0].Value
-		ranking := row.Cells[1].Value
-		_ = hc.cardsRevealedForPlayer(playerName, ranking)
+		holeCardsStr := row.Cells[1].Value
+		communityStr := row.Cells[2].Value
+		hc.showdownHands[playerName] = &showdownHand{
+			holeCards:      parseCards(holeCardsStr),
+			communityCards: parseCards(communityStr),
+		}
 	}
 	return nil
 }
@@ -744,7 +762,14 @@ func (hc *HandContext) handleAwardPot(winnerName string, amount int) error {
 }
 
 func (hc *HandContext) handsEvaluated() error {
-	// Placeholder for evaluation
+	hc.evaluationResults = make(map[string]*evaluationResult)
+	for playerName, hand := range hc.showdownHands {
+		rank := handlers.EvaluateHand(examples.GameVariant_TEXAS_HOLDEM, hand.holeCards, hand.communityCards)
+		hc.evaluationResults[playerName] = &evaluationResult{
+			rankType: rank.RankType,
+			score:    rank.Score,
+		}
+	}
 	return nil
 }
 
@@ -1232,12 +1257,32 @@ func (hc *HandContext) handStatusIs(status string) error {
 }
 
 func (hc *HandContext) playerHasRanking(playerName, ranking string) error {
-	// Implementation for ranking verification
+	result, ok := hc.evaluationResults[playerName]
+	if !ok {
+		return fmt.Errorf("no evaluation result for player %s", playerName)
+	}
+	expected := examples.HandRankType(examples.HandRankType_value[ranking])
+	if result.rankType != expected {
+		return fmt.Errorf("expected %s ranking %s, got %s", playerName, ranking, result.rankType.String())
+	}
 	return nil
 }
 
 func (hc *HandContext) playerWins(playerName string) error {
-	// Implementation for winner verification
+	if len(hc.evaluationResults) < 2 {
+		return fmt.Errorf("need at least 2 players for winner determination")
+	}
+	winnerName := ""
+	var winnerScore int32 = -1
+	for name, result := range hc.evaluationResults {
+		if result.score > winnerScore || (result.score == winnerScore && int32(result.rankType) > int32(hc.evaluationResults[winnerName].rankType)) {
+			winnerName = name
+			winnerScore = result.score
+		}
+	}
+	if winnerName != playerName {
+		return fmt.Errorf("expected %s to win, but %s won", playerName, winnerName)
+	}
 	return nil
 }
 
