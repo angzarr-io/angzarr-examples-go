@@ -35,7 +35,7 @@ func HandleDealCards(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*anyp
 
 	// Validate
 	if len(cmd.Players) < 2 {
-		return nil, angzarr.NewCommandRejectedError("Need at least 2 players")
+		return nil, angzarr.NewInvalidArgumentError("Need at least 2 players")
 	}
 
 	// Compute
@@ -97,7 +97,7 @@ func HandlePostBlind(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*anyp
 		return nil, angzarr.NewCommandRejectedError("Player not in hand")
 	}
 	if cmd.Amount <= 0 {
-		return nil, angzarr.NewCommandRejectedError("Amount must be positive")
+		return nil, angzarr.NewInvalidArgumentError("Amount must be positive")
 	}
 
 	// Compute
@@ -160,7 +160,7 @@ func HandlePlayerAction(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*a
 
 	case examples.ActionType_CHECK:
 		if amountToCall > 0 {
-			return nil, angzarr.NewCommandRejectedError("Cannot check, must call or fold")
+			return nil, angzarr.NewInvalidArgumentError("Cannot check, must call or fold")
 		}
 
 	case examples.ActionType_CALL:
@@ -174,14 +174,14 @@ func HandlePlayerAction(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*a
 
 	case examples.ActionType_BET:
 		if state.CurrentBet > 0 {
-			return nil, angzarr.NewCommandRejectedError("Cannot bet, use raise")
+			return nil, angzarr.NewInvalidArgumentError("Cannot bet, use raise")
 		}
 		minBet := state.MinRaise
 		if minBet == 0 {
 			minBet = 10
 		}
 		if cmd.Amount < minBet {
-			return nil, angzarr.NewCommandRejectedError(fmt.Sprintf("Bet must be at least %d", minBet))
+			return nil, angzarr.NewInvalidArgumentError(fmt.Sprintf("Bet must be at least %d", minBet))
 		}
 		actualAmount = cmd.Amount
 		if actualAmount > player.Stack {
@@ -190,12 +190,12 @@ func HandlePlayerAction(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*a
 
 	case examples.ActionType_RAISE:
 		if state.CurrentBet <= 0 {
-			return nil, angzarr.NewCommandRejectedError("Cannot raise, use bet")
+			return nil, angzarr.NewInvalidArgumentError("Cannot raise, use bet")
 		}
 		totalBet := cmd.Amount
 		raiseAmount := totalBet - state.CurrentBet
 		if raiseAmount < state.MinRaise {
-			return nil, angzarr.NewCommandRejectedError("Raise below minimum")
+			return nil, angzarr.NewInvalidArgumentError("Raise below minimum")
 		}
 		actualAmount = totalBet - player.BetThisRound
 		if actualAmount > player.Stack {
@@ -257,7 +257,7 @@ func HandleDealCommunityCards(_ *pb.EventBook, cmdAny *anypb.Any, state HandStat
 		return nil, angzarr.NewCommandRejectedError("Hand already complete")
 	}
 	if state.GameVariant == examples.GameVariant_FIVE_CARD_DRAW {
-		return nil, angzarr.NewCommandRejectedError("Five Card Draw does not use community cards")
+		return nil, angzarr.NewInvalidArgumentError("Five Card Draw does not use community cards")
 	}
 
 	// Validate
@@ -275,7 +275,7 @@ func HandleDealCommunityCards(_ *pb.EventBook, cmdAny *anypb.Any, state HandStat
 		newPhase = examples.BettingPhase_RIVER
 		cardsToDeal = 1
 	default:
-		return nil, angzarr.NewCommandRejectedError("Cannot deal more community cards")
+		return nil, angzarr.NewInvalidArgumentError("Cannot deal more community cards")
 	}
 
 	if cmd.Count > 0 && int(cmd.Count) != cardsToDeal {
@@ -315,7 +315,7 @@ func HandleRequestDraw(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*an
 		return nil, angzarr.NewCommandRejectedError("Hand already complete")
 	}
 	if state.GameVariant != examples.GameVariant_FIVE_CARD_DRAW {
-		return nil, angzarr.NewCommandRejectedError("Draw is not supported in this game variant")
+		return nil, angzarr.NewInvalidArgumentError("Draw is not supported in this game variant")
 	}
 
 	// Validate
