@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -1272,18 +1273,49 @@ func (hc *HandContext) playerWins(playerName string) error {
 	if len(hc.evaluationResults) < 2 {
 		return fmt.Errorf("need at least 2 players for winner determination")
 	}
+	// Compare hands: first by rank type (higher wins), then by kicker cards
 	winnerName := ""
-	var winnerScore int32 = -1
-	for name, result := range hc.evaluationResults {
-		if result.score > winnerScore || (result.score == winnerScore && int32(result.rankType) > int32(hc.evaluationResults[winnerName].rankType)) {
+	for name := range hc.evaluationResults {
+		if winnerName == "" {
 			winnerName = name
-			winnerScore = result.score
+			continue
+		}
+		winner := hc.evaluationResults[winnerName]
+		challenger := hc.evaluationResults[name]
+		if challenger.score > winner.score {
+			winnerName = name
+		} else if challenger.score == winner.score {
+			// Tie on score — compare kickers using the showdown hands
+			wHand := hc.showdownHands[winnerName]
+			cHand := hc.showdownHands[name]
+			if wHand != nil && cHand != nil {
+				// Compare hole cards (highest first)
+				wCards := sortedRanks(wHand.holeCards)
+				cCards := sortedRanks(cHand.holeCards)
+				for i := 0; i < len(wCards) && i < len(cCards); i++ {
+					if cCards[i] > wCards[i] {
+						winnerName = name
+						break
+					} else if wCards[i] > cCards[i] {
+						break
+					}
+				}
+			}
 		}
 	}
 	if winnerName != playerName {
 		return fmt.Errorf("expected %s to win, but %s won", playerName, winnerName)
 	}
 	return nil
+}
+
+func sortedRanks(cards []*examples.Card) []int32 {
+	ranks := make([]int32, len(cards))
+	for i, c := range cards {
+		ranks[i] = int32(c.Rank)
+	}
+	sort.Slice(ranks, func(i, j int) bool { return ranks[i] > ranks[j] })
+	return ranks
 }
 
 func (hc *HandContext) revealedRankingIs(ranking string) error {
