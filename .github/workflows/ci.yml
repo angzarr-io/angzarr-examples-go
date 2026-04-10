@@ -369,8 +369,24 @@ jobs:
           kubectl port-forward -n angzarr-test svc/player-aggregate 1310:1310 &
           kubectl port-forward -n angzarr-test svc/table-aggregate 1311:1310 &
           kubectl port-forward -n angzarr-test svc/hand-aggregate 1312:1310 &
-          sleep 3
-          go test -v -tags=acceptance -count=1 ./tests/ -timeout=600s
+
+          # Wait for port-forwards to establish
+          for port in 1310 1311 1312; do
+            for i in $(seq 1 15); do
+              if nc -z localhost $port 2>/dev/null; then
+                echo "Port $port ready"
+                break
+              fi
+              [ $i -eq 15 ] && echo "WARNING: Port $port not ready after 15s"
+              sleep 1
+            done
+          done
+
+          # Quick connectivity check
+          echo "Testing gRPC connectivity..."
+          grpcurl -plaintext localhost:1310 list 2>/dev/null && echo "Player aggregate: OK" || echo "Player aggregate: gRPC not responding (expected for non-reflection)"
+
+          go test -v -tags=acceptance -count=1 -timeout=300s ./tests/
 
       - name: Show logs on failure
         if: failure()

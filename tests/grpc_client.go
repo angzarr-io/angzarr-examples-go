@@ -95,7 +95,7 @@ func (g *grpcClient) SendCommandWithMode(domain string, root []byte, command *an
 		CascadeErrorMode: cascadeErrorMode,
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	return g.clientForDomain(domain).HandleCommand(ctx, req)
