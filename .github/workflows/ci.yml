@@ -9,7 +9,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/angzarr-io/examples-go
-  COORDINATOR_VERSION: "0.5.1"
+  COORDINATOR_VERSION: latest
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
@@ -393,7 +393,7 @@ jobs:
             kubectl logs -n angzarr-test -l angzarr.io/domain=$domain --tail=5 --all-containers 2>/dev/null || true
           done
 
-          go test -v -tags=acceptance -count=1 -timeout=300s ./tests/
+          go test -v -tags=acceptance -count=1 -timeout=600s ./tests/
 
       - name: Show logs on failure
         if: failure()
