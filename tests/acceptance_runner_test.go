@@ -12,7 +12,7 @@ import (
 
 var acceptanceOpts = godog.Options{
 	Output:      colors.Colored(os.Stdout),
-	Format:      "progress",
+	Format:      "pretty",
 	Paths:       []string{"../angzarr-project/features/acceptance"},
 	Randomize:   0,
 	Concurrency: 1,
