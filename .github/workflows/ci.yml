@@ -387,10 +387,13 @@ jobs:
           kubectl get pods -n angzarr-test -o wide
           echo ""
 
-          # Check pod logs for startup errors
-          for domain in player table hand; do
-            echo "=== $domain aggregate logs (last 5 lines) ==="
-            kubectl logs -n angzarr-test -l angzarr.io/domain=$domain --tail=5 --all-containers 2>/dev/null || true
+          # Check pod logs for startup errors — show ALL container logs
+          for pod in $(kubectl get pods -n angzarr-test -o name --no-headers | grep aggregate); do
+            echo "=== $pod (all containers, last 10 lines) ==="
+            for container in $(kubectl get "$pod" -n angzarr-test -o jsonpath='{.spec.containers[*].name}'); do
+              echo "--- container: $container ---"
+              kubectl logs "$pod" -n angzarr-test -c "$container" --tail=10 2>/dev/null || true
+            done
           done
 
           go test -v -tags=acceptance -count=1 -timeout=600s ./tests/
