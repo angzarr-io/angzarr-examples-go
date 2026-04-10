@@ -382,9 +382,16 @@ jobs:
             done
           done
 
-          # Quick connectivity check
-          echo "Testing gRPC connectivity..."
-          grpcurl -plaintext localhost:1310 list 2>/dev/null && echo "Player aggregate: OK" || echo "Player aggregate: gRPC not responding (expected for non-reflection)"
+          # Verify pods are healthy
+          echo "=== Pod status before tests ==="
+          kubectl get pods -n angzarr-test -o wide
+          echo ""
+
+          # Check pod logs for startup errors
+          for domain in player table hand; do
+            echo "=== $domain aggregate logs (last 5 lines) ==="
+            kubectl logs -n angzarr-test -l angzarr.io/domain=$domain --tail=5 --all-containers 2>/dev/null || true
+          done
 
           go test -v -tags=acceptance -count=1 -timeout=300s ./tests/
 
