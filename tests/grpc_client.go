@@ -44,7 +44,10 @@ func newGRPCClient(playerAddr string) (*grpcClient, error) {
 	}
 
 	for domain, addr := range addrs {
-		conn, err := grpc.NewClient(addr,
+		// Use passthrough resolver to avoid DNS issues in Kind clusters
+		target := "passthrough:///" + addr
+		fmt.Printf("[GRPC] Connecting %s to %s (target: %s)\n", domain, addr, target)
+		conn, err := grpc.NewClient(target,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		)
 		if err != nil {
