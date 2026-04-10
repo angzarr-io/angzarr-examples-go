@@ -134,7 +134,9 @@ func (ac *AcceptanceContext) getOrCreateHand(tableKey string) *handRecord {
 // advanceSeq updates a sequence counter based on the response event count.
 func advanceSeq(seq *uint32, resp *pb.CommandResponse) {
 	if resp != nil && resp.Events != nil {
-		*seq += uint32(len(resp.Events.Pages))
+		pages := uint32(len(resp.Events.Pages))
+		fmt.Printf("[SEQ] Advancing from %d by %d pages (new seq: %d)\n", *seq, pages, *seq+pages)
+		*seq += pages
 	}
 }
 
