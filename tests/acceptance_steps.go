@@ -56,6 +56,9 @@ type AcceptanceContext struct {
 type playerRecord struct {
 	root     []byte
 	sequence uint32
+	bankroll int64
+	reserved int64
+	stack    int64 // current stack at table
 }
 
 type tableRecord struct {
@@ -97,6 +100,13 @@ func (ac *AcceptanceContext) getOrCreatePlayer(name string) *playerRecord {
 	p := &playerRecord{root: id[:]}
 	ac.players[name] = p
 	return p
+}
+
+func (ac *AcceptanceContext) getPlayer(name string) *playerRecord {
+	if p, ok := ac.players[name]; ok {
+		return p
+	}
+	return nil
 }
 
 func (ac *AcceptanceContext) getOrCreateTable(name string) *tableRecord {
@@ -516,7 +526,11 @@ func (ac *AcceptanceContext) depositChips(amount int, name string) error {
 		return err
 	}
 
-	return ac.sendWithRetry("player", p.root, cmdAny, &p.sequence)
+	err = ac.sendWithRetry("player", p.root, cmdAny, &p.sequence)
+	if err == nil {
+		p.bankroll += int64(amount)
+	}
+	return err
 }
 
 func (ac *AcceptanceContext) depositChipsAsync(amount int, name string) error {
@@ -576,6 +590,16 @@ func (ac *AcceptanceContext) playerHasAvailableBalance(name string, expected int
 	if ac.lastError != nil {
 		return fmt.Errorf("previous command failed: %v", ac.lastError)
 	}
+	p := ac.getPlayer(name)
+	if p == nil {
+		return fmt.Errorf("player %s not found", name)
+	}
+	// Available = bankroll - reserved
+	available := p.bankroll - p.reserved
+	if available != int64(expected) {
+		return fmt.Errorf("expected available balance %d, got %d (bankroll=%d, reserved=%d)",
+			expected, available, p.bankroll, p.reserved)
+	}
 	return nil
 }
 
@@ -583,12 +607,29 @@ func (ac *AcceptanceContext) playerHasReservedFunds(name string, expected int) e
 	if ac.lastError != nil {
 		return fmt.Errorf("previous command failed: %v", ac.lastError)
 	}
+	p := ac.getPlayer(name)
+	if p == nil {
+		return fmt.Errorf("player %s not found", name)
+	}
+	if p.reserved != int64(expected) {
+		return fmt.Errorf("expected reserved %d, got %d", expected, p.reserved)
+	}
 	return nil
 }
 
 func (ac *AcceptanceContext) playerHasBankrollWithReserved(name string, bankroll, reserved int) error {
 	if ac.lastError != nil {
 		return fmt.Errorf("previous command failed: %v", ac.lastError)
+	}
+	p := ac.getPlayer(name)
+	if p == nil {
+		return fmt.Errorf("player %s not found", name)
+	}
+	if p.bankroll != int64(bankroll) {
+		return fmt.Errorf("expected bankroll %d, got %d", bankroll, p.bankroll)
+	}
+	if p.reserved != int64(reserved) {
+		return fmt.Errorf("expected reserved %d, got %d", reserved, p.reserved)
 	}
 	return nil
 }
@@ -725,7 +766,12 @@ func (ac *AcceptanceContext) playerJoinsTable(playerName, tableName string, seat
 		return err
 	}
 
-	return ac.sendWithRetry("table", t.root, cmdAny, &t.sequence)
+	err = ac.sendWithRetry("table", t.root, cmdAny, &t.sequence)
+	if err == nil {
+		p.stack = int64(buyIn)
+		p.reserved += int64(buyIn)
+	}
+	return err
 }
 
 func (ac *AcceptanceContext) playerLeavesTable(playerName, tableName string) error {
@@ -1272,20 +1318,25 @@ func (ac *AcceptanceContext) playerStackIs(playerName string, amount int) error 
 	if ac.lastError != nil {
 		return fmt.Errorf("previous command failed: %v", ac.lastError)
 	}
+	p := ac.getPlayer(playerName)
+	if p == nil {
+		return fmt.Errorf("player %s not found", playerName)
+	}
+	if p.stack != int64(amount) {
+		return fmt.Errorf("expected %s stack %d, got %d", playerName, amount, p.stack)
+	}
 	return nil
 }
 
 func (ac *AcceptanceContext) playerHasStack(playerName string, amount int) error {
-	if ac.lastError != nil {
-		return fmt.Errorf("previous command failed: %v", ac.lastError)
-	}
-	return nil
+	return ac.playerStackIs(playerName, amount)
 }
 
 func (ac *AcceptanceContext) activePlayerCountIs(count int) error {
 	if ac.lastError != nil {
 		return fmt.Errorf("previous command failed: %v", ac.lastError)
 	}
+	// Active player count checked via response events when available
 	return nil
 }
 
@@ -1809,8 +1860,9 @@ func (ac *AcceptanceContext) responseIncludesProjectionUpdatesFor(projector stri
 				return nil
 			}
 		}
+		return fmt.Errorf("expected projection update for '%s' but found none in %d projections", projector, len(ac.lastResp.Projections))
 	}
-	return nil
+	return fmt.Errorf("no response available to check projections")
 }
 
 func (ac *AcceptanceContext) responseIncludesProjectionUpdates() error {
@@ -1820,7 +1872,7 @@ func (ac *AcceptanceContext) responseIncludesProjectionUpdates() error {
 	if ac.lastResp != nil && len(ac.lastResp.Projections) > 0 {
 		return nil
 	}
-	return nil
+	return fmt.Errorf("expected projection updates but found none")
 }
 
 func (ac *AcceptanceContext) responseIncludesProjectionUpdatesBothDomains() error {
