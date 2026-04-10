@@ -382,9 +382,15 @@ jobs:
             done
           done
 
-          # Verify pods are healthy
-          echo "=== Pod status before tests ==="
+          # Verify pods and services
+          echo "=== Pod status ==="
           kubectl get pods -n angzarr-test -o wide
+          echo ""
+          echo "=== Services ==="
+          kubectl get svc -n angzarr-test
+          echo ""
+          echo "=== Service endpoints ==="
+          kubectl get endpoints -n angzarr-test | grep aggregate
           echo ""
 
           # Check pod logs for startup errors — show ALL container logs
