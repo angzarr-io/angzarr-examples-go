@@ -396,7 +396,11 @@ func (h *Hand) playerAction(cmd *examples.PlayerAction) (*examples.ActionTaken, 
 
 	case examples.ActionType_CHECK:
 		if amountToCall > 0 {
-			return nil, angzarr.NewInvalidArgumentError("Cannot check, must call or fold")
+			// Treat check as call when there's an amount to match
+			actualAmount = amountToCall
+			if actualAmount > player.Stack {
+				actualAmount = player.Stack
+			}
 		}
 
 	case examples.ActionType_CALL:

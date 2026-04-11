@@ -1419,13 +1419,37 @@ func (ac *AcceptanceContext) playerAddsChips(playerName string, amount int) erro
 }
 
 func (ac *AcceptanceContext) playerAttemptsToAddChips(playerName string) error {
-	ac.lastError = ac.playerAddsChips(playerName, 100)
+	ac.lastError = ac.playerAddsChipsDirect(playerName, 100)
 	return nil // Don't fail step — let the Then step check lastError
 }
 
 func (ac *AcceptanceContext) playerAttemptsToAddNChips(playerName string, amount int) error {
-	ac.lastError = ac.playerAddsChips(playerName, amount)
+	ac.lastError = ac.playerAddsChipsDirect(playerName, amount)
 	return nil // Don't fail step — let the Then step check lastError
+}
+
+// playerAddsChipsDirect sends AddChips without the balance pre-check.
+// Used by "attempts" steps where we expect the command to fail.
+func (ac *AcceptanceContext) playerAddsChipsDirect(playerName string, amount int) error {
+	tableName := ac.currentHandKey
+	if tableName == "" {
+		tableName = ac.lastTableKey
+	}
+	if tableName == "" {
+		return fmt.Errorf("no active table")
+	}
+	t := ac.getOrCreateTable(tableName)
+	p := ac.getOrCreatePlayer(playerName)
+
+	cmd := &examples.AddChips{
+		PlayerRoot: p.root,
+		Amount:     int64(amount),
+	}
+	cmdAny, err := anypb.New(cmd)
+	if err != nil {
+		return err
+	}
+	return ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
 }
 
 // =============================================================================
