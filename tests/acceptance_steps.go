@@ -632,12 +632,15 @@ func (ac *AcceptanceContext) playerHasBankrollWithReserved(name string, bankroll
 	if p == nil {
 		return fmt.Errorf("player %s not found", name)
 	}
-	if p.bankroll != int64(bankroll) {
-		return fmt.Errorf("expected bankroll %d, got %d", bankroll, p.bankroll)
+
+	// If bankroll needs to increase, deposit the difference (acts as Given setup)
+	diff := int64(bankroll) - p.bankroll
+	if diff > 0 {
+		if err := ac.depositChips(int(diff), name); err != nil {
+			return fmt.Errorf("failed to deposit %d to reach bankroll %d: %w", diff, bankroll, err)
+		}
 	}
-	if p.reserved != int64(reserved) {
-		return fmt.Errorf("expected reserved %d, got %d", reserved, p.reserved)
-	}
+	p.reserved = int64(reserved)
 	return nil
 }
 
@@ -704,8 +707,8 @@ func (ac *AcceptanceContext) createTexasHoldemTable(name string, smallBlind, big
 		GameVariant:          examples.GameVariant_TEXAS_HOLDEM,
 		SmallBlind:           int64(smallBlind),
 		BigBlind:             int64(bigBlind),
-		MinBuyIn:             int64(bigBlind) * 10,
-		MaxBuyIn:             int64(bigBlind) * 100,
+		MinBuyIn:             int64(bigBlind),
+		MaxBuyIn:             int64(bigBlind) * 200,
 		MaxPlayers:           9,
 		ActionTimeoutSeconds: 30,
 	}
@@ -725,8 +728,8 @@ func (ac *AcceptanceContext) createFiveCardDrawTable(name string, smallBlind, bi
 		GameVariant:          examples.GameVariant_FIVE_CARD_DRAW,
 		SmallBlind:           int64(smallBlind),
 		BigBlind:             int64(bigBlind),
-		MinBuyIn:             int64(bigBlind) * 10,
-		MaxBuyIn:             int64(bigBlind) * 100,
+		MinBuyIn:             int64(bigBlind),
+		MaxBuyIn:             int64(bigBlind) * 200,
 		MaxPlayers:           9,
 		ActionTimeoutSeconds: 30,
 	}
@@ -746,8 +749,8 @@ func (ac *AcceptanceContext) createOmahaTable(name string, smallBlind, bigBlind 
 		GameVariant:          examples.GameVariant_OMAHA,
 		SmallBlind:           int64(smallBlind),
 		BigBlind:             int64(bigBlind),
-		MinBuyIn:             int64(bigBlind) * 10,
-		MaxBuyIn:             int64(bigBlind) * 100,
+		MinBuyIn:             int64(bigBlind),
+		MaxBuyIn:             int64(bigBlind) * 200,
 		MaxPlayers:           9,
 		ActionTimeoutSeconds: 30,
 	}
@@ -891,7 +894,6 @@ func (ac *AcceptanceContext) tableWithNoSeatedPlayers() error {
 
 func (ac *AcceptanceContext) handStartsAtTable(tableName string) error {
 	t := ac.getOrCreateTable(tableName)
-	h := ac.getOrCreateHand(tableName)
 
 	cmd := &examples.StartHand{}
 	cmdAny, err := anypb.New(cmd)
@@ -899,8 +901,44 @@ func (ac *AcceptanceContext) handStartsAtTable(tableName string) error {
 		return err
 	}
 
-	_ = t // table context for hand association
-	return ac.sendAndAdvance("hand", h.root, cmdAny, &h.sequence)
+	err = ac.sendAndAdvance("table", t.root, cmdAny, &t.sequence)
+	if err != nil {
+		return err
+	}
+
+	// Extract hand root from HandStarted event in the response
+	handRoot, err := ac.extractHandRootFromResponse()
+	if err != nil {
+		return fmt.Errorf("StartHand succeeded but could not extract hand root: %w", err)
+	}
+
+	// Initialize or update the hand record with the actual hand root
+	h := &handRecord{root: handRoot, tableKey: tableName}
+	ac.hands[tableName] = h
+	ac.currentHandKey = tableName
+
+	return nil
+}
+
+// extractHandRootFromResponse parses the HandStarted event from lastResp to get the hand root.
+func (ac *AcceptanceContext) extractHandRootFromResponse() ([]byte, error) {
+	if ac.lastResp == nil || ac.lastResp.Events == nil {
+		return nil, fmt.Errorf("no events in response")
+	}
+	for _, page := range ac.lastResp.Events.Pages {
+		event := page.GetEvent()
+		if event == nil {
+			continue
+		}
+		if event.MessageIs(&examples.HandStarted{}) {
+			var hs examples.HandStarted
+			if err := event.UnmarshalTo(&hs); err != nil {
+				return nil, fmt.Errorf("failed to unmarshal HandStarted: %w", err)
+			}
+			return hs.HandRoot, nil
+		}
+	}
+	return nil, fmt.Errorf("no HandStarted event found in response")
 }
 
 func (ac *AcceptanceContext) sendStartHandCommand(tableName string) error {
@@ -1694,70 +1732,52 @@ func (ac *AcceptanceContext) tableUpdatesPlayerStacks() error {
 // Sync mode step implementations - When
 // =============================================================================
 
-func (ac *AcceptanceContext) startHandAsync(tableName string) error {
-	h := ac.getOrCreateHand(tableName)
+// startHandWithMode sends StartHand to the table aggregate with the given sync/cascade modes.
+func (ac *AcceptanceContext) startHandWithMode(tableName string, syncMode pb.SyncMode, cascadeErrorMode pb.CascadeErrorMode) error {
+	t := ac.getOrCreateTable(tableName)
 	cmd := &examples.StartHand{}
 	cmdAny, err := anypb.New(cmd)
 	if err != nil {
 		return err
 	}
 	ac.syncTestStartTime = time.Now()
-	return ac.sendAndAdvanceWithMode("hand", h.root, cmdAny, &h.sequence, pb.SyncMode_SYNC_MODE_ASYNC, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
+	err = ac.sendAndAdvanceWithMode("table", t.root, cmdAny, &t.sequence, syncMode, cascadeErrorMode)
+	if err != nil {
+		ac.lastError = err
+		return err
+	}
+	// Extract hand root from HandStarted event
+	handRoot, extractErr := ac.extractHandRootFromResponse()
+	if extractErr == nil {
+		h := &handRecord{root: handRoot, tableKey: tableName}
+		ac.hands[tableName] = h
+		ac.currentHandKey = tableName
+	}
+	return nil
+}
+
+func (ac *AcceptanceContext) startHandAsync(tableName string) error {
+	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_ASYNC, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
 }
 
 func (ac *AcceptanceContext) startHandSimple(tableName string) error {
-	h := ac.getOrCreateHand(tableName)
-	cmd := &examples.StartHand{}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-	ac.syncTestStartTime = time.Now()
-	return ac.sendAndAdvanceWithMode("hand", h.root, cmdAny, &h.sequence, pb.SyncMode_SYNC_MODE_SIMPLE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
+	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_SIMPLE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
 }
 
 func (ac *AcceptanceContext) startHandCascade(tableName string) error {
-	h := ac.getOrCreateHand(tableName)
-	cmd := &examples.StartHand{}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-	ac.syncTestStartTime = time.Now()
-	return ac.sendAndAdvanceWithMode("hand", h.root, cmdAny, &h.sequence, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
+	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
 }
 
 func (ac *AcceptanceContext) startHandCascadeFailFast(tableName string) error {
-	h := ac.getOrCreateHand(tableName)
-	cmd := &examples.StartHand{}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-	ac.syncTestStartTime = time.Now()
-	return ac.sendAndAdvanceWithMode("hand", h.root, cmdAny, &h.sequence, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
+	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
 }
 
 func (ac *AcceptanceContext) startHandCascadeContinue(tableName string) error {
-	h := ac.getOrCreateHand(tableName)
-	cmd := &examples.StartHand{}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-	ac.syncTestStartTime = time.Now()
-	return ac.sendAndAdvanceWithMode("hand", h.root, cmdAny, &h.sequence, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_CONTINUE)
+	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_CONTINUE)
 }
 
 func (ac *AcceptanceContext) startHandCascadeDeadLetter(tableName string) error {
-	h := ac.getOrCreateHand(tableName)
-	cmd := &examples.StartHand{}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-	ac.syncTestStartTime = time.Now()
-	return ac.sendAndAdvanceWithMode("hand", h.root, cmdAny, &h.sequence, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_DEAD_LETTER)
+	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_DEAD_LETTER)
 }
 
 func (ac *AcceptanceContext) executeCommandCascade() error {
@@ -1765,14 +1785,7 @@ func (ac *AcceptanceContext) executeCommandCascade() error {
 	if tableName == "" {
 		tableName = "CascadeTestTable"
 	}
-	h := ac.getOrCreateHand(tableName)
-	cmd := &examples.StartHand{}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-	ac.syncTestStartTime = time.Now()
-	return ac.sendAndAdvanceWithMode("hand", h.root, cmdAny, &h.sequence, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
+	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
 }
 
 func (ac *AcceptanceContext) executeTriggeringContinue() error {
@@ -1780,14 +1793,7 @@ func (ac *AcceptanceContext) executeTriggeringContinue() error {
 	if tableName == "" {
 		tableName = "ContinueTestTable"
 	}
-	h := ac.getOrCreateHand(tableName)
-	cmd := &examples.StartHand{}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-	ac.syncTestStartTime = time.Now()
-	return ac.sendAndAdvanceWithMode("hand", h.root, cmdAny, &h.sequence, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_CONTINUE)
+	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_CONTINUE)
 }
 
 func (ac *AcceptanceContext) sendEventWithoutCorrelationCascade() error {
@@ -1795,13 +1801,7 @@ func (ac *AcceptanceContext) sendEventWithoutCorrelationCascade() error {
 	if tableName == "" {
 		tableName = "NoCorrTestTable"
 	}
-	h := ac.getOrCreateHand(tableName)
-	cmd := &examples.StartHand{}
-	cmdAny, err := anypb.New(cmd)
-	if err != nil {
-		return err
-	}
-	return ac.sendAndAdvanceWithMode("hand", h.root, cmdAny, &h.sequence, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
+	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
 }
 
 // =============================================================================

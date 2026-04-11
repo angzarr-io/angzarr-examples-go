@@ -74,6 +74,7 @@ func NewTable(eventBook *pb.EventBook) *Table {
 	t.Handles(t.leave)
 	t.Handles(t.startHand)
 	t.Handles(t.endHand)
+	t.Handles(t.addChips)
 
 	return t
 }
@@ -145,9 +146,9 @@ func (t *Table) applyHandEnded(state *TableState, event *examples.HandEnded) {
 }
 
 func (t *Table) applyChipsAdded(state *TableState, event *examples.ChipsAdded) {
-	pos := t.findSeatByPlayer(t.State(), event.PlayerRoot)
+	pos := t.findSeatByPlayer(state, event.PlayerRoot)
 	if pos >= 0 {
-		t.State().Seats[pos].Stack = event.NewStack
+		state.Seats[pos].Stack = event.NewStack
 	}
 }
 
@@ -410,6 +411,45 @@ func (t *Table) startHand(cmd *examples.StartHand) (*examples.HandStarted, error
 		BigBlind:           state.BigBlind,
 		ActivePlayers:      activePlayers,
 		StartedAt:          timestamppb.New(time.Now()),
+	}, nil
+}
+
+func (t *Table) addChips(cmd *examples.AddChips) (*examples.ChipsAdded, error) {
+	state := t.State()
+
+	// Guard
+	if !t.exists() {
+		return nil, angzarr.NewCommandRejectedError("Table does not exist")
+	}
+	if state.Status == "in_hand" {
+		return nil, angzarr.NewCommandRejectedError("cannot add chips during hand")
+	}
+
+	// Validate
+	if len(cmd.PlayerRoot) == 0 {
+		return nil, angzarr.NewInvalidArgumentError("player_root is required")
+	}
+	if cmd.Amount <= 0 {
+		return nil, angzarr.NewInvalidArgumentError("amount must be positive")
+	}
+	pos := t.findSeatByPlayer(state, cmd.PlayerRoot)
+	if pos < 0 {
+		return nil, angzarr.NewCommandRejectedError("Player is not seated at table")
+	}
+
+	seat := state.Seats[pos]
+	newStack := seat.Stack + cmd.Amount
+	if newStack > state.MaxBuyIn {
+		return nil, angzarr.NewCommandRejectedError(
+			fmt.Sprintf("Stack would exceed max buy-in of %d", state.MaxBuyIn))
+	}
+
+	// Compute
+	return &examples.ChipsAdded{
+		PlayerRoot: cmd.PlayerRoot,
+		Amount:     cmd.Amount,
+		NewStack:   newStack,
+		AddedAt:    timestamppb.New(time.Now()),
 	}, nil
 }
 
