@@ -171,7 +171,7 @@ func (ac *AcceptanceContext) sendAndAdvanceWithMode(domain string, root []byte, 
 // On success it advances the sequence. On sequence mismatch, extracts
 // the correct sequence from the error and retries.
 func (ac *AcceptanceContext) sendWithRetry(domain string, root []byte, cmdAny *anypb.Any, seq *uint32) error {
-	maxAttempts := 5
+	maxAttempts := 8
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		resp, err := ac.client.SendCommand(domain, root, cmdAny, *seq)
@@ -182,11 +182,12 @@ func (ac *AcceptanceContext) sendWithRetry(domain string, root []byte, cmdAny *a
 			return nil
 		}
 		lastErr = err
-		// Extract correct sequence from "Sequence mismatch" errors
+		// Extract correct sequence from "Sequence mismatch" errors and retry immediately
 		if correctSeq, ok := extractSequenceFromError(err); ok {
 			*seq = correctSeq
+			continue // Retry immediately with corrected sequence
 		}
-		time.Sleep(time.Duration(200*attempt) * time.Millisecond)
+		time.Sleep(time.Duration(100*attempt) * time.Millisecond)
 	}
 	ac.lastResp = nil
 	ac.lastError = fmt.Errorf("command failed after %d attempts: %w", maxAttempts, lastErr)
@@ -939,10 +940,9 @@ func (ac *AcceptanceContext) handStartsAtTable(tableName string) error {
 		return fmt.Errorf("StartHand succeeded but could not extract hand root: %w", err)
 	}
 
-	// Initialize hand record. The saga/PM chain creates events (DealCards, blinds, etc.)
-	// asynchronously. The correct sequence is discovered via sendWithRetry's sequence
-	// mismatch recovery when the first hand command is sent.
-	time.Sleep(2 * time.Second)
+	// Initialize hand record. The saga/PM chain creates events asynchronously.
+	// The correct sequence is discovered via sendWithRetry's sequence mismatch recovery.
+	time.Sleep(500 * time.Millisecond)
 	h := &handRecord{root: handRoot, tableKey: tableName}
 	ac.hands[tableName] = h
 	ac.currentHandKey = tableName
@@ -1780,7 +1780,7 @@ func (ac *AcceptanceContext) startHandWithMode(tableName string, syncMode pb.Syn
 	handRoot, extractErr := ac.extractHandRootFromResponse()
 	if extractErr == nil {
 		if syncMode != pb.SyncMode_SYNC_MODE_CASCADE {
-			time.Sleep(2 * time.Second)
+			time.Sleep(500 * time.Millisecond)
 		}
 		h := &handRecord{root: handRoot, tableKey: tableName}
 		ac.hands[tableName] = h
