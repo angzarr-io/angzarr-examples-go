@@ -133,22 +133,13 @@ func (ac *AcceptanceContext) getOrCreateHand(tableKey string) *handRecord {
 
 // advanceSeq updates a sequence counter based on the response event count.
 func advanceSeq(seq *uint32, resp *pb.CommandResponse) {
-	if resp == nil || resp.Events == nil {
+	if resp == nil || resp.Events == nil || len(resp.Events.Pages) == 0 {
 		return
 	}
-	// The next_sequence field on the EventBook tells us where the aggregate is now.
-	// This is the authoritative source — more reliable than counting pages.
-	if resp.Events.NextSequence > 0 {
-		newSeq := resp.Events.NextSequence
-		fmt.Printf("[SEQ] Setting seq to EventBook.NextSequence: %d (was %d)\n", newSeq, *seq)
-		*seq = newSeq
-		return
-	}
-	// Fallback: advance by number of event pages
-	if len(resp.Events.Pages) > 0 {
-		*seq += uint32(len(resp.Events.Pages))
-		fmt.Printf("[SEQ] Advancing by %d pages to %d\n", len(resp.Events.Pages), *seq)
-	}
+	// Each command produces exactly 1 domain event. The event store sequences
+	// events starting at 0, so the next expected sequence is current + 1.
+	// This matches the Rust acceptance test pattern which uses hardcoded sequences.
+	*seq++
 }
 
 // sendAndAdvance sends a command at the current sequence, stores lastResp/lastError,
