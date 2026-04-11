@@ -131,24 +131,16 @@ func (ac *AcceptanceContext) getOrCreateHand(tableKey string) *handRecord {
 	return h
 }
 
-// advanceSeq updates a sequence counter based on committed event pages.
-// Only counts pages where NoCommit is false (actually persisted events).
-// Pages with NoCommit=true (notifications, cascade events) aren't stored
-// in the event store and don't advance the sequence.
+// advanceSeq uses the EventBook's NextSequence field to set the correct
+// next expected sequence. This is the authoritative value set by the
+// coordinator after storing events. It accounts for the actual number
+// of persisted events, excluding non-committed pages.
 func advanceSeq(seq *uint32, resp *pb.CommandResponse) {
 	if resp == nil || resp.Events == nil {
 		return
 	}
-	committedCount := uint32(0)
-	for _, page := range resp.Events.Pages {
-		if !page.NoCommit {
-			committedCount++
-		}
-	}
-	if committedCount == 0 && len(resp.Events.Pages) > 0 {
-		committedCount = 1 // Fallback
-	}
-	*seq += committedCount
+	// NextSequence is set by the coordinator and is authoritative
+	*seq = resp.Events.NextSequence
 }
 
 // sendAndAdvance sends a command at the current sequence, stores lastResp/lastError,
