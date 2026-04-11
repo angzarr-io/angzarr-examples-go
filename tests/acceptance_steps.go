@@ -885,7 +885,7 @@ func (ac *AcceptanceContext) tableHasHandCount(tableName string, count int) erro
 }
 
 func (ac *AcceptanceContext) tableWithNoSeatedPlayers() error {
-	return ac.createTexasHoldemTable("EmptyTable", 5, 10)
+	return ac.createTexasHoldemTable("Empty", 5, 10)
 }
 
 // =============================================================================
@@ -912,8 +912,11 @@ func (ac *AcceptanceContext) handStartsAtTable(tableName string) error {
 		return fmt.Errorf("StartHand succeeded but could not extract hand root: %w", err)
 	}
 
-	// Initialize or update the hand record with the actual hand root
-	h := &handRecord{root: handRoot, tableKey: tableName}
+	// Initialize hand record with sequence=1, accounting for the saga's DealCards event.
+	// The saga-table-hand translates HandStarted → DealCards (1 event at seq 0).
+	// Brief wait for the saga to process before we send hand commands.
+	time.Sleep(2 * time.Second)
+	h := &handRecord{root: handRoot, tableKey: tableName, sequence: 1}
 	ac.hands[tableName] = h
 	ac.currentHandKey = tableName
 
@@ -1749,7 +1752,12 @@ func (ac *AcceptanceContext) startHandWithMode(tableName string, syncMode pb.Syn
 	// Extract hand root from HandStarted event
 	handRoot, extractErr := ac.extractHandRootFromResponse()
 	if extractErr == nil {
-		h := &handRecord{root: handRoot, tableKey: tableName}
+		// Sequence 1 accounts for saga's DealCards event at seq 0.
+		// For CASCADE mode, saga completes inline; for others, brief wait.
+		if syncMode != pb.SyncMode_SYNC_MODE_CASCADE {
+			time.Sleep(2 * time.Second)
+		}
+		h := &handRecord{root: handRoot, tableKey: tableName, sequence: 1}
 		ac.hands[tableName] = h
 		ac.currentHandKey = tableName
 	}
@@ -1784,6 +1792,10 @@ func (ac *AcceptanceContext) executeCommandCascade() error {
 	tableName := ac.lastTableKey
 	if tableName == "" {
 		tableName = "CascadeTestTable"
+		// Ensure table exists with players for StartHand
+		if err := ac.tableWithNSeatedPlayers(tableName, 2); err != nil {
+			return err
+		}
 	}
 	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
 }
@@ -1792,6 +1804,10 @@ func (ac *AcceptanceContext) executeTriggeringContinue() error {
 	tableName := ac.lastTableKey
 	if tableName == "" {
 		tableName = "ContinueTestTable"
+		// Ensure table exists with players for StartHand
+		if err := ac.tableWithNSeatedPlayers(tableName, 2); err != nil {
+			return err
+		}
 	}
 	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_CONTINUE)
 }
@@ -1800,6 +1816,9 @@ func (ac *AcceptanceContext) sendEventWithoutCorrelationCascade() error {
 	tableName := ac.lastTableKey
 	if tableName == "" {
 		tableName = "NoCorrTestTable"
+		if err := ac.tableWithNSeatedPlayers(tableName, 2); err != nil {
+			return err
+		}
 	}
 	return ac.startHandWithMode(tableName, pb.SyncMode_SYNC_MODE_CASCADE, pb.CascadeErrorMode_CASCADE_ERROR_FAIL_FAST)
 }
