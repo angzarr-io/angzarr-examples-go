@@ -145,8 +145,16 @@ func advanceSeq(seq *uint32, resp *pb.CommandResponse) {
 
 // sendAndAdvance sends a command at the current sequence, stores lastResp/lastError,
 // and advances the sequence by the event page count on success.
+// On sequence mismatch, auto-corrects the sequence and retries once.
 func (ac *AcceptanceContext) sendAndAdvance(domain string, root []byte, cmdAny *anypb.Any, seq *uint32) error {
 	resp, err := ac.client.SendCommand(domain, root, cmdAny, *seq)
+	if err != nil {
+		// Auto-correct sequence mismatch and retry once
+		if correctSeq, ok := extractSequenceFromError(err); ok {
+			*seq = correctSeq
+			resp, err = ac.client.SendCommand(domain, root, cmdAny, *seq)
+		}
+	}
 	ac.lastResp = resp
 	ac.lastError = err
 	if err == nil {
@@ -940,45 +948,16 @@ func (ac *AcceptanceContext) handStartsAtTable(tableName string) error {
 		return fmt.Errorf("StartHand succeeded but could not extract hand root: %w", err)
 	}
 
-	// Initialize hand record. The saga/PM chain creates events asynchronously.
-	// Probe the hand's actual sequence by sending a dummy command.
+	// Initialize hand record with seq=0. sendAndAdvance auto-corrects
+	// if the saga has already created events (sequence mismatch recovery).
 	h := &handRecord{root: handRoot, tableKey: tableName}
 	ac.hands[tableName] = h
 	ac.currentHandKey = tableName
 
-	// Wait for saga chain, then discover actual hand sequence
-	ac.probeHandSequence(h)
+	// Brief wait for saga to process DealCards
+	time.Sleep(1 * time.Second)
 
 	return nil
-}
-
-// probeHandSequence discovers the hand aggregate's current sequence by
-// sending a probe command and extracting the correct sequence from the
-// coordinator's sequence mismatch error.
-func (ac *AcceptanceContext) probeHandSequence(h *handRecord) {
-	// Give the saga time to process
-	for attempt := 0; attempt < 10; attempt++ {
-		time.Sleep(300 * time.Millisecond)
-		// Send a PostBlind probe — it will fail but reveal the actual sequence
-		cmd := &examples.PostBlind{Amount: 1}
-		cmdAny, err := anypb.New(cmd)
-		if err != nil {
-			continue
-		}
-		_, err = ac.client.SendCommand("hand", h.root, cmdAny, 0)
-		if err == nil {
-			// Unlikely but handle it — seq was 0
-			h.sequence = 1
-			return
-		}
-		if correctSeq, ok := extractSequenceFromError(err); ok {
-			h.sequence = correctSeq
-			return
-		}
-		// If error is "Hand does not exist", saga hasn't run yet — keep waiting
-	}
-	// Fallback: set sequence to 0 and let individual commands handle errors
-	h.sequence = 0
 }
 
 // extractHandRootFromResponse parses the HandStarted event from lastResp to get the hand root.
@@ -1814,7 +1793,7 @@ func (ac *AcceptanceContext) startHandWithMode(tableName string, syncMode pb.Syn
 		ac.hands[tableName] = h
 		ac.currentHandKey = tableName
 		if syncMode != pb.SyncMode_SYNC_MODE_CASCADE {
-			ac.probeHandSequence(h)
+			time.Sleep(1 * time.Second)
 		}
 	}
 	return nil
