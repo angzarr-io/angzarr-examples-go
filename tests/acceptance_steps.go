@@ -1088,24 +1088,29 @@ func (ac *AcceptanceContext) deterministicDeckAliceBestBobSecond() error {
 }
 
 func (ac *AcceptanceContext) handDealtWithPlayerToAct(playerName string) error {
-	if ac.lastError != nil {
-		return fmt.Errorf("previous command failed: %v", ac.lastError)
+	tableName := ac.lastTableKey
+	if tableName == "" {
+		return fmt.Errorf("no table created yet")
 	}
-	return nil
+	if err := ac.handStartsAtTable(tableName); err != nil {
+		return err
+	}
+	return ac.blindsArePosted(5, 10)
 }
 
 func (ac *AcceptanceContext) handInProgress() error {
-	if ac.lastError != nil {
-		return fmt.Errorf("previous command failed: %v", ac.lastError)
+	tableName := ac.lastTableKey
+	if tableName == "" {
+		return fmt.Errorf("no table created yet")
 	}
-	return nil
+	if err := ac.handStartsAtTable(tableName); err != nil {
+		return err
+	}
+	return ac.blindsArePosted(5, 10)
 }
 
 func (ac *AcceptanceContext) handInProgressWithPlayerToAct(playerName string) error {
-	if ac.lastError != nil {
-		return fmt.Errorf("previous command failed: %v", ac.lastError)
-	}
-	return nil
+	return ac.handDealtWithPlayerToAct(playerName)
 }
 
 func (ac *AcceptanceContext) currentBetAndMinRaise(bet, minRaise int) error {
