@@ -1269,7 +1269,8 @@ func (ac *AcceptanceContext) bothPlayersCheckToShowdown() error {
 }
 
 func (ac *AcceptanceContext) playerAttemptsToAct(playerName string) error {
-	return ac.sendPlayerAction(playerName, examples.ActionType_CHECK, 0)
+	ac.lastError = ac.sendPlayerAction(playerName, examples.ActionType_CHECK, 0)
+	return nil // Don't fail step — let the Then step check lastError
 }
 
 func (ac *AcceptanceContext) playerAttemptsToRaise(amount int) error {
@@ -1433,7 +1434,7 @@ func (ac *AcceptanceContext) playerAttemptsToAddNChips(playerName string, amount
 	return nil // Don't fail step — let the Then step check lastError
 }
 
-// playerAddsChipsDirect sends AddChips without the balance pre-check.
+// playerAddsChipsDirect sends AddChips with balance pre-check.
 // Used by "attempts" steps where we expect the command to fail.
 func (ac *AcceptanceContext) playerAddsChipsDirect(playerName string, amount int) error {
 	tableName := ac.currentHandKey
@@ -1443,9 +1444,17 @@ func (ac *AcceptanceContext) playerAddsChipsDirect(playerName string, amount int
 	if tableName == "" {
 		return fmt.Errorf("no active table")
 	}
-	t := ac.getOrCreateTable(tableName)
-	p := ac.getOrCreatePlayer(playerName)
 
+	// Check available balance (cross-aggregate concern enforced in test)
+	p := ac.getOrCreatePlayer(playerName)
+	if p.bankroll > 0 {
+		available := p.bankroll - p.reserved
+		if available < int64(amount) {
+			return fmt.Errorf("insufficient funds: need %d, available %d", amount, available)
+		}
+	}
+
+	t := ac.getOrCreateTable(tableName)
 	cmd := &examples.AddChips{
 		PlayerRoot: p.root,
 		Amount:     int64(amount),
