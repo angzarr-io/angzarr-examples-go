@@ -401,11 +401,13 @@ func (h *Hand) playerAction(cmd *examples.PlayerAction) (*examples.ActionTaken, 
 
 	case examples.ActionType_CALL:
 		if amountToCall <= 0 {
-			return nil, angzarr.NewCommandRejectedError("Nothing to call")
-		}
-		actualAmount = amountToCall
-		if actualAmount > player.Stack {
-			actualAmount = player.Stack
+			// Already matching current bet — treat as check
+			actualAmount = 0
+		} else {
+			actualAmount = amountToCall
+			if actualAmount > player.Stack {
+				actualAmount = player.Stack
+			}
 		}
 
 	case examples.ActionType_BET:
