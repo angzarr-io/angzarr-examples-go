@@ -1075,7 +1075,7 @@ func (ac *AcceptanceContext) postsSmallBlind(playerName string, amount int) erro
 	h := ac.getOrCreateHand(tableName)
 	p := ac.getOrCreatePlayer(playerName)
 
-cmd := &examples.PostBlind{
+	cmd := &examples.PostBlind{
 		PlayerRoot: p.root,
 		BlindType:  "small",
 		Amount:     int64(amount),
@@ -1126,7 +1126,7 @@ func (ac *AcceptanceContext) sendPlayerAction(playerName string, action examples
 	h := ac.getOrCreateHand(tableName)
 	p := ac.getOrCreatePlayer(playerName)
 
-cmd := &examples.PlayerAction{
+	cmd := &examples.PlayerAction{
 		PlayerRoot: p.root,
 		Action:     action,
 		Amount:     amount,
