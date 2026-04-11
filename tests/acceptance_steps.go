@@ -954,8 +954,8 @@ func (ac *AcceptanceContext) handStartsAtTable(tableName string) error {
 	ac.hands[tableName] = h
 	ac.currentHandKey = tableName
 
-	// Brief wait for saga to process DealCards
-	time.Sleep(1 * time.Second)
+	// Wait for saga to process DealCards
+	time.Sleep(2 * time.Second)
 
 	return nil
 }
@@ -1883,7 +1883,7 @@ func (ac *AcceptanceContext) startHandWithMode(tableName string, syncMode pb.Syn
 		ac.hands[tableName] = h
 		ac.currentHandKey = tableName
 		if syncMode != pb.SyncMode_SYNC_MODE_CASCADE {
-			time.Sleep(1 * time.Second)
+			time.Sleep(2 * time.Second)
 		}
 	}
 	return nil
