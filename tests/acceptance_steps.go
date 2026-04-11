@@ -131,23 +131,24 @@ func (ac *AcceptanceContext) getOrCreateHand(tableKey string) *handRecord {
 	return h
 }
 
-// advanceSeq updates a sequence counter based on actual event pages in the response.
-// Only counts pages that contain actual events (have a non-empty type URL),
-// excluding snapshot/metadata pages that don't represent stored events.
+// advanceSeq updates a sequence counter based on committed event pages.
+// Only counts pages where NoCommit is false (actually persisted events).
+// Pages with NoCommit=true (notifications, cascade events) aren't stored
+// in the event store and don't advance the sequence.
 func advanceSeq(seq *uint32, resp *pb.CommandResponse) {
 	if resp == nil || resp.Events == nil {
 		return
 	}
-	eventCount := uint32(0)
+	committedCount := uint32(0)
 	for _, page := range resp.Events.Pages {
-		if event := page.GetEvent(); event != nil && event.TypeUrl != "" {
-			eventCount++
+		if !page.NoCommit {
+			committedCount++
 		}
 	}
-	if eventCount == 0 && len(resp.Events.Pages) > 0 {
-		eventCount = 1 // Fallback: at least 1 event if pages exist
+	if committedCount == 0 && len(resp.Events.Pages) > 0 {
+		committedCount = 1 // Fallback
 	}
-	*seq += eventCount
+	*seq += committedCount
 }
 
 // sendAndAdvance sends a command at the current sequence, stores lastResp/lastError,
