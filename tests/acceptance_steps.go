@@ -948,8 +948,6 @@ func (ac *AcceptanceContext) handStartsAtTable(tableName string) error {
 		return fmt.Errorf("StartHand succeeded but could not extract hand root: %w", err)
 	}
 
-	fmt.Printf("[DEBUG] handStartsAtTable: table=%s hand_root=%x\n", tableName, handRoot)
-
 	// Initialize hand record with seq=0. sendAndAdvance auto-corrects
 	// if the saga has already created events (sequence mismatch recovery).
 	h := &handRecord{root: handRoot, tableKey: tableName}
@@ -1077,10 +1075,7 @@ func (ac *AcceptanceContext) postsSmallBlind(playerName string, amount int) erro
 	h := ac.getOrCreateHand(tableName)
 	p := ac.getOrCreatePlayer(playerName)
 
-	fmt.Printf("[DEBUG] postsSmallBlind: player=%s root=%x hand_root=%x seq=%d\n",
-		playerName, p.root, h.root, h.sequence)
-
-	cmd := &examples.PostBlind{
+cmd := &examples.PostBlind{
 		PlayerRoot: p.root,
 		BlindType:  "small",
 		Amount:     int64(amount),
@@ -1089,11 +1084,7 @@ func (ac *AcceptanceContext) postsSmallBlind(playerName string, amount int) erro
 	if err != nil {
 		return err
 	}
-	err = ac.sendAndAdvance("hand", h.root, cmdAny, &h.sequence)
-	if err != nil {
-		fmt.Printf("[DEBUG] postsSmallBlind FAILED: %v\n", err)
-	}
-	return err
+	return ac.sendAndAdvance("hand", h.root, cmdAny, &h.sequence)
 }
 
 func (ac *AcceptanceContext) postsBigBlind(playerName string, amount int) error {
@@ -1135,10 +1126,7 @@ func (ac *AcceptanceContext) sendPlayerAction(playerName string, action examples
 	h := ac.getOrCreateHand(tableName)
 	p := ac.getOrCreatePlayer(playerName)
 
-	fmt.Printf("[DEBUG] sendPlayerAction: player=%s root=%x hand_root=%x seq=%d action=%s amount=%d\n",
-		playerName, p.root, h.root, h.sequence, action, amount)
-
-	cmd := &examples.PlayerAction{
+cmd := &examples.PlayerAction{
 		PlayerRoot: p.root,
 		Action:     action,
 		Amount:     amount,
@@ -1148,11 +1136,7 @@ func (ac *AcceptanceContext) sendPlayerAction(playerName string, action examples
 		return err
 	}
 
-	err = ac.sendAndAdvance("hand", h.root, cmdAny, &h.sequence)
-	if err != nil {
-		fmt.Printf("[DEBUG] sendPlayerAction FAILED: %v\n", err)
-	}
-	return err
+	return ac.sendAndAdvance("hand", h.root, cmdAny, &h.sequence)
 }
 
 func (ac *AcceptanceContext) playerFolds(playerName string) error {

@@ -348,9 +348,17 @@ func (t *Table) startHand(cmd *examples.StartHand) (*examples.HandStarted, error
 		return nil, angzarr.NewCommandRejectedError("Not enough players to start hand")
 	}
 
-	// Generate hand root (deterministic based on table + hand number)
+	// Generate hand root deterministically from the table's aggregate root + hand number.
+	// Uses the EventBook's Cover root (the table aggregate UUID) to ensure uniqueness
+	// across different table instances with the same name.
 	handNumber := state.HandCount + 1
-	handRootInput := fmt.Sprintf("angzarr.poker.hand.%s.%d", state.TableID, handNumber)
+	var tableRootHex string
+	if t.EventBook() != nil && t.EventBook().Cover != nil && t.EventBook().Cover.Root != nil {
+		tableRootHex = hex.EncodeToString(t.EventBook().Cover.Root.Value)
+	} else {
+		tableRootHex = state.TableID
+	}
+	handRootInput := fmt.Sprintf("angzarr.poker.hand.%s.%d", tableRootHex, handNumber)
 	hash := sha256.Sum256([]byte(handRootInput))
 	handRoot := hash[:16] // Use first 16 bytes as UUID-like identifier
 
