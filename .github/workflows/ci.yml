@@ -9,7 +9,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/angzarr-io/examples-go
-  COORDINATOR_VERSION: latest
+  COORDINATOR_VERSION: v0.5.1
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
