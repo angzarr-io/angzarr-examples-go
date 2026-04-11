@@ -941,13 +941,44 @@ func (ac *AcceptanceContext) handStartsAtTable(tableName string) error {
 	}
 
 	// Initialize hand record. The saga/PM chain creates events asynchronously.
-	// The correct sequence is discovered via sendWithRetry's sequence mismatch recovery.
-	time.Sleep(500 * time.Millisecond)
+	// Probe the hand's actual sequence by sending a dummy command.
 	h := &handRecord{root: handRoot, tableKey: tableName}
 	ac.hands[tableName] = h
 	ac.currentHandKey = tableName
 
+	// Wait for saga chain, then discover actual hand sequence
+	ac.probeHandSequence(h)
+
 	return nil
+}
+
+// probeHandSequence discovers the hand aggregate's current sequence by
+// sending a probe command and extracting the correct sequence from the
+// coordinator's sequence mismatch error.
+func (ac *AcceptanceContext) probeHandSequence(h *handRecord) {
+	// Give the saga time to process
+	for attempt := 0; attempt < 10; attempt++ {
+		time.Sleep(300 * time.Millisecond)
+		// Send a PostBlind probe — it will fail but reveal the actual sequence
+		cmd := &examples.PostBlind{Amount: 1}
+		cmdAny, err := anypb.New(cmd)
+		if err != nil {
+			continue
+		}
+		_, err = ac.client.SendCommand("hand", h.root, cmdAny, 0)
+		if err == nil {
+			// Unlikely but handle it — seq was 0
+			h.sequence = 1
+			return
+		}
+		if correctSeq, ok := extractSequenceFromError(err); ok {
+			h.sequence = correctSeq
+			return
+		}
+		// If error is "Hand does not exist", saga hasn't run yet — keep waiting
+	}
+	// Fallback: set sequence to 0 and let individual commands handle errors
+	h.sequence = 0
 }
 
 // extractHandRootFromResponse parses the HandStarted event from lastResp to get the hand root.
@@ -1074,7 +1105,7 @@ func (ac *AcceptanceContext) postsSmallBlind(playerName string, amount int) erro
 	if err != nil {
 		return err
 	}
-	return ac.sendWithRetry("hand", h.root, cmdAny, &h.sequence)
+	return ac.sendAndAdvance("hand", h.root, cmdAny, &h.sequence)
 }
 
 func (ac *AcceptanceContext) postsBigBlind(playerName string, amount int) error {
@@ -1097,7 +1128,7 @@ func (ac *AcceptanceContext) postsBigBlind(playerName string, amount int) error 
 	if err != nil {
 		return err
 	}
-	return ac.sendWithRetry("hand", h.root, cmdAny, &h.sequence)
+	return ac.sendAndAdvance("hand", h.root, cmdAny, &h.sequence)
 }
 
 // =============================================================================
@@ -1126,7 +1157,7 @@ func (ac *AcceptanceContext) sendPlayerAction(playerName string, action examples
 		return err
 	}
 
-	return ac.sendWithRetry("hand", h.root, cmdAny, &h.sequence)
+	return ac.sendAndAdvance("hand", h.root, cmdAny, &h.sequence)
 }
 
 func (ac *AcceptanceContext) playerFolds(playerName string) error {
@@ -1243,7 +1274,7 @@ func (ac *AcceptanceContext) playerDiscardsCards(playerName string, count int, i
 	if err != nil {
 		return err
 	}
-	return ac.sendWithRetry("hand", h.root, cmdAny, &h.sequence)
+	return ac.sendAndAdvance("hand", h.root, cmdAny, &h.sequence)
 }
 
 func (ac *AcceptanceContext) playerStandsPat(playerName string) error {
@@ -1433,7 +1464,7 @@ func (ac *AcceptanceContext) flopIsDealt() error {
 	if err != nil {
 		return err
 	}
-	return ac.sendWithRetry("hand", h.root, cmdAny, &h.sequence)
+	return ac.sendAndAdvance("hand", h.root, cmdAny, &h.sequence)
 }
 
 func (ac *AcceptanceContext) turnIsDealt() error {
@@ -1779,12 +1810,12 @@ func (ac *AcceptanceContext) startHandWithMode(tableName string, syncMode pb.Syn
 	// Extract hand root from HandStarted event
 	handRoot, extractErr := ac.extractHandRootFromResponse()
 	if extractErr == nil {
-		if syncMode != pb.SyncMode_SYNC_MODE_CASCADE {
-			time.Sleep(500 * time.Millisecond)
-		}
 		h := &handRecord{root: handRoot, tableKey: tableName}
 		ac.hands[tableName] = h
 		ac.currentHandKey = tableName
+		if syncMode != pb.SyncMode_SYNC_MODE_CASCADE {
+			ac.probeHandSequence(h)
+		}
 	}
 	return nil
 }

@@ -402,7 +402,7 @@ jobs:
             done
           done
 
-          go test -v -tags=acceptance -count=1 -timeout=600s ./tests/
+          go test -v -tags=acceptance -count=1 -timeout=900s ./tests/
 
       - name: Show logs on failure
         if: failure()
