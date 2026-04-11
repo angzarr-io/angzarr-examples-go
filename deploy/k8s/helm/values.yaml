@@ -65,11 +65,11 @@ resources:
 
 applicationResources:
   requests:
-    memory: "32Mi"
-    cpu: "25m"
-  limits:
-    memory: "128Mi"
+    memory: "64Mi"
     cpu: "100m"
+  limits:
+    memory: "256Mi"
+    cpu: "500m"
 
 # Storage configuration
 # Requires: helm install angzarr-db ./deploy/k8s/helm/postgres -n angzarr
