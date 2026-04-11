@@ -133,22 +133,21 @@ func (ac *AcceptanceContext) getOrCreateHand(tableKey string) *handRecord {
 
 // advanceSeq updates a sequence counter based on the response event count.
 func advanceSeq(seq *uint32, resp *pb.CommandResponse) {
-	if resp != nil && resp.Events != nil && len(resp.Events.Pages) > 0 {
-		// Use the last event's sequence number to determine the next expected sequence.
-		// This is more reliable than counting pages, since responses may include
-		// non-event pages (projections, cascade results).
-		lastPage := resp.Events.Pages[len(resp.Events.Pages)-1]
-		if lastPage.Header != nil {
-			if seqType := lastPage.Header.GetSequence(); seqType > 0 {
-				newSeq := uint32(seqType) + 1
-				fmt.Printf("[SEQ] Advancing from %d to %d (last event seq: %d)\n", *seq, newSeq, seqType)
-				*seq = newSeq
-				return
-			}
-		}
-		// Fallback: advance by 1 per command
-		fmt.Printf("[SEQ] Advancing from %d by 1 (fallback)\n", *seq)
-		*seq++
+	if resp == nil || resp.Events == nil {
+		return
+	}
+	// The next_sequence field on the EventBook tells us where the aggregate is now.
+	// This is the authoritative source — more reliable than counting pages.
+	if resp.Events.NextSequence > 0 {
+		newSeq := resp.Events.NextSequence
+		fmt.Printf("[SEQ] Setting seq to EventBook.NextSequence: %d (was %d)\n", newSeq, *seq)
+		*seq = newSeq
+		return
+	}
+	// Fallback: advance by number of event pages
+	if len(resp.Events.Pages) > 0 {
+		*seq += uint32(len(resp.Events.Pages))
+		fmt.Printf("[SEQ] Advancing by %d pages to %d\n", len(resp.Events.Pages), *seq)
 	}
 }
 
