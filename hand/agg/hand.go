@@ -158,6 +158,8 @@ func (h *Hand) applyBlindPosted(state *HandState, event *examples.BlindPosted) {
 	state.Pots[0].Amount = event.PotTotal
 	if event.Amount > state.CurrentBet {
 		state.CurrentBet = event.Amount
+		// MinRaise is the big blind amount for the first betting round
+		state.MinRaise = event.Amount
 	}
 }
 
@@ -180,6 +182,12 @@ func (h *Hand) applyActionTaken(state *HandState, event *examples.ActionTaken) {
 		}
 	}
 	state.Pots[0].Amount = event.PotTotal
+	if event.AmountToCall > state.CurrentBet {
+		raiseSize := event.AmountToCall - state.CurrentBet
+		if raiseSize > state.MinRaise {
+			state.MinRaise = raiseSize
+		}
+	}
 	state.CurrentBet = event.AmountToCall
 }
 
@@ -190,6 +198,7 @@ func (h *Hand) applyBettingRoundComplete(state *HandState, event *examples.Betti
 		p.HasActed = false
 	}
 	state.CurrentBet = 0
+	state.MinRaise = 0
 
 	// Update stacks from snapshot
 	for _, snap := range event.Stacks {
@@ -205,6 +214,13 @@ func (h *Hand) applyBettingRoundComplete(state *HandState, event *examples.Betti
 func (h *Hand) applyCommunityCardsDealt(state *HandState, event *examples.CommunityCardsDealt) {
 	state.CommunityCards = event.AllCommunityCards
 	state.CurrentPhase = event.Phase
+	// New betting round: reset betting state
+	state.CurrentBet = 0
+	state.MinRaise = 0
+	for _, p := range state.Players {
+		p.BetThisRound = 0
+		p.HasActed = false
+	}
 }
 
 func (h *Hand) applyDrawCompleted(state *HandState, event *examples.DrawCompleted) {
