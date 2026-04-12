@@ -66,7 +66,7 @@ run: build
     cd "{{ROOT}}" && cargo run \
         --bin angzarr-standalone \
         --features standalone,sqlite \
-        -- --config examples/go/standalone.yaml
+        -- --config standalone.yaml
 
 clean:
     rm -rf "{{ROOT}}/data"

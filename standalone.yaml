@@ -1,5 +1,5 @@
 # Standalone mode configuration for Go Poker example
-# Run with: ANGZARR_CONFIG=examples/go/standalone.yaml ./target/debug/angzarr-standalone
+# Run with: ANGZARR_CONFIG=standalone.yaml ./target/debug/angzarr-standalone
 
 storage:
   type: sqlite
@@ -24,7 +24,7 @@ standalone:
       storage:
         type: sqlite
         sqlite:
-          path: ./examples/go/data/player.db
+          path: ./data/player.db
 
     - domain: table
       port: 50202
@@ -36,7 +36,7 @@ standalone:
       storage:
         type: sqlite
         sqlite:
-          path: ./examples/go/data/table.db
+          path: ./data/table.db
 
     - domain: hand
       port: 50203
@@ -48,7 +48,7 @@ standalone:
       storage:
         type: sqlite
         sqlite:
-          path: ./examples/go/data/hand.db
+          path: ./data/hand.db
 
   sagas:
     - name: saga-table-hand
