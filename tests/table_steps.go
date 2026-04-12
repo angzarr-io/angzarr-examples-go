@@ -214,7 +214,7 @@ func (tc *TableContext) tableCreatedWithMaxPlayers(tableName string, maxPlayers 
 }
 
 func (tc *TableContext) playerJoinedAtSeat(playerName string, seat int) error {
-	return tc.playerJoinedAtSeatWithStack(playerName, seat, 1000)
+	return tc.playerJoinedAtSeatWithStack(playerName, seat, 500)
 }
 
 func (tc *TableContext) playerJoinedAtSeatWithStack(playerName string, seat, stack int) error {

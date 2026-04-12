@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -16,13 +17,25 @@ import (
 )
 
 // HandContext holds state for hand aggregate scenarios
+type showdownHand struct {
+	holeCards      []*examples.Card
+	communityCards []*examples.Card
+}
+
+type evaluationResult struct {
+	rankType examples.HandRankType
+	score    int32
+}
+
 type HandContext struct {
-	eventPages   []*pb.EventPage
-	state        handlers.HandState
-	resultEvent  *anypb.Any
-	resultEvents []*anypb.Any
-	lastError    error
-	playerRoots  map[string][]byte // name -> root bytes
+	eventPages        []*pb.EventPage
+	state             handlers.HandState
+	resultEvent       *anypb.Any
+	resultEvents      []*anypb.Any
+	lastError         error
+	playerRoots       map[string][]byte // name -> root bytes
+	showdownHands     map[string]*showdownHand
+	evaluationResults map[string]*evaluationResult
 }
 
 func newHandContext() *HandContext {
@@ -410,7 +423,7 @@ func (hc *HandContext) flopDealt() error {
 }
 
 func (hc *HandContext) flopAndTurnDealt() error {
-	hc.communityCardsDealtFlop()
+	_ = hc.communityCardsDealtFlop()
 
 	turnEvent := &examples.CommunityCardsDealt{
 		Cards:             createHoleCards(1),
@@ -424,8 +437,8 @@ func (hc *HandContext) flopAndTurnDealt() error {
 }
 
 func (hc *HandContext) completedBettingTexasHoldem(playerCount int) error {
-	hc.cardsDealtTexasHoldem(playerCount)
-	hc.blindsPostedWithPot(30)
+	_ = hc.cardsDealtTexasHoldem(playerCount)
+	_ = hc.blindsPostedWithPot(30)
 	return nil
 }
 
@@ -498,11 +511,17 @@ func (hc *HandContext) playerFolded(playerName string) error {
 }
 
 func (hc *HandContext) showdownWithHands(table *godog.Table) error {
-	hc.showdownStarted()
+	// Table format: | player | hole_cards | community_cards |
+	// Store hands for evaluation in handsEvaluated step
+	hc.showdownHands = make(map[string]*showdownHand)
 	for _, row := range table.Rows[1:] {
 		playerName := row.Cells[0].Value
-		ranking := row.Cells[1].Value
-		hc.cardsRevealedForPlayer(playerName, ranking)
+		holeCardsStr := row.Cells[1].Value
+		communityStr := row.Cells[2].Value
+		hc.showdownHands[playerName] = &showdownHand{
+			holeCards:      parseCards(holeCardsStr),
+			communityCards: parseCards(communityStr),
+		}
 	}
 	return nil
 }
@@ -744,7 +763,14 @@ func (hc *HandContext) handleAwardPot(winnerName string, amount int) error {
 }
 
 func (hc *HandContext) handsEvaluated() error {
-	// Placeholder for evaluation
+	hc.evaluationResults = make(map[string]*evaluationResult)
+	for playerName, hand := range hc.showdownHands {
+		rank := handlers.EvaluateHand(examples.GameVariant_TEXAS_HOLDEM, hand.holeCards, hand.communityCards)
+		hc.evaluationResults[playerName] = &evaluationResult{
+			rankType: rank.RankType,
+			score:    rank.Score,
+		}
+	}
 	return nil
 }
 
@@ -1232,13 +1258,64 @@ func (hc *HandContext) handStatusIs(status string) error {
 }
 
 func (hc *HandContext) playerHasRanking(playerName, ranking string) error {
-	// Implementation for ranking verification
+	result, ok := hc.evaluationResults[playerName]
+	if !ok {
+		return fmt.Errorf("no evaluation result for player %s", playerName)
+	}
+	expected := examples.HandRankType(examples.HandRankType_value[ranking])
+	if result.rankType != expected {
+		return fmt.Errorf("expected %s ranking %s, got %s", playerName, ranking, result.rankType.String())
+	}
 	return nil
 }
 
 func (hc *HandContext) playerWins(playerName string) error {
-	// Implementation for winner verification
+	if len(hc.evaluationResults) < 2 {
+		return fmt.Errorf("need at least 2 players for winner determination")
+	}
+	// Compare hands: first by rank type (higher wins), then by kicker cards
+	winnerName := ""
+	for name := range hc.evaluationResults {
+		if winnerName == "" {
+			winnerName = name
+			continue
+		}
+		winner := hc.evaluationResults[winnerName]
+		challenger := hc.evaluationResults[name]
+		if challenger.score > winner.score {
+			winnerName = name
+		} else if challenger.score == winner.score {
+			// Tie on score — compare kickers using the showdown hands
+			wHand := hc.showdownHands[winnerName]
+			cHand := hc.showdownHands[name]
+			if wHand != nil && cHand != nil {
+				// Compare hole cards (highest first)
+				wCards := sortedRanks(wHand.holeCards)
+				cCards := sortedRanks(cHand.holeCards)
+				for i := 0; i < len(wCards) && i < len(cCards); i++ {
+					if cCards[i] > wCards[i] {
+						winnerName = name
+						break
+					} else if wCards[i] > cCards[i] {
+						break
+					}
+				}
+			}
+		}
+	}
+	if winnerName != playerName {
+		return fmt.Errorf("expected %s to win, but %s won", playerName, winnerName)
+	}
 	return nil
+}
+
+func sortedRanks(cards []*examples.Card) []int32 {
+	ranks := make([]int32, len(cards))
+	for i, c := range cards {
+		ranks[i] = int32(c.Rank)
+	}
+	sort.Slice(ranks, func(i, j int) bool { return ranks[i] > ranks[j] })
+	return ranks
 }
 
 func (hc *HandContext) revealedRankingIs(ranking string) error {

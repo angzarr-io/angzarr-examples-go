@@ -29,7 +29,7 @@ func validateReserveFunds(cmd *examples.ReserveFunds, state PlayerState) (int64,
 		amount = cmd.Amount.Amount
 	}
 	if amount <= 0 {
-		return 0, angzarr.NewCommandRejectedError("amount must be positive")
+		return 0, angzarr.NewInvalidArgumentError("amount must be positive")
 	}
 	if amount > state.AvailableBalance() {
 		return 0, angzarr.NewCommandRejectedError("Insufficient funds")

@@ -2,14 +2,16 @@
 # Usage: kind create cluster --config deploy/kind/cluster.yaml --name angzarr-test
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
+# Use same node image as CI for consistency
 nodes:
   - role: control-plane
     image: kindest/node:v1.31.0
+    # Expose ports for gateway and stream services
     extraPortMappings:
-      - containerPort: 30084
+      - containerPort: 30084  # Gateway NodePort
         hostPort: 9084
         protocol: TCP
-      - containerPort: 31340
+      - containerPort: 31340  # Stream NodePort
         hostPort: 1340
         protocol: TCP
     kubeadmConfigPatches:
@@ -18,3 +20,5 @@ nodes:
         nodeRegistration:
           kubeletExtraArgs:
             node-labels: "ingress-ready=true"
+# Note: containerd registry mirrors are configured via hosts.toml in newer versions
+# ghcr.io works by default without explicit configuration

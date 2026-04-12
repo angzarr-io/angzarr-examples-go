@@ -10,17 +10,17 @@ default:
     @just --list
 
 # Generate protos for client library (required before build)
-client-proto:
-    cd {{ROOT}}/proto && buf generate --template buf.gen.go.yaml
+proto-gen:
+    cd {{ROOT}} && buf generate
 
-build: client-proto
+build: proto-gen
     go mod tidy && go build ./...
 
-test-unit:
-    @echo "No unit tests for Go examples (using BDD tests in ./tests/)"
+test-unit: proto-gen
+    go mod tidy && go test -v ./tests/ -timeout=120s
 
-test-acceptance: client-proto
-    @if [ -d "./tests" ]; then go mod tidy && go test -v ./tests/...; else echo "No acceptance tests yet"; fi
+test-acceptance: proto-gen
+    PLAYER_URL="${PLAYER_URL:-localhost:1310}" go test -v -tags=acceptance ./tests/ -timeout=600s
 
 test: test-unit test-acceptance
 

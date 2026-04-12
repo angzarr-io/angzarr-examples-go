@@ -99,6 +99,11 @@ func (s *PlayerTableSaga) handleReturningToPlay(
 	return nil, nil
 }
 
+// Handle satisfies the OOSaga interface (destinations parameter added in 0.5.0).
+func (s *PlayerTableSaga) Handle(source *pb.EventBook, _ *angzarr.Destinations) (*angzarr.SagaHandlerResponse, error) {
+	return s.SagaBase.Handle(source)
+}
+
 func main() {
 	saga := NewPlayerTableSaga()
 	angzarr.RunOOSagaServer("saga-player-table", "50214", saga)

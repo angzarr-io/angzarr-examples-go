@@ -35,7 +35,7 @@ func HandleDealCards(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*anyp
 
 	// Validate
 	if len(cmd.Players) < 2 {
-		return nil, angzarr.NewCommandRejectedError("Need at least 2 players")
+		return nil, angzarr.NewInvalidArgumentError("Need at least 2 players")
 	}
 
 	// Compute
@@ -43,7 +43,7 @@ func HandleDealCards(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*anyp
 	seed := cmd.DeckSeed
 	if len(seed) == 0 {
 		seed = make([]byte, 32)
-		rand.Read(seed)
+		_, _ = rand.Read(seed)
 	}
 	shuffleDeck(deck, seed)
 
@@ -97,7 +97,7 @@ func HandlePostBlind(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*anyp
 		return nil, angzarr.NewCommandRejectedError("Player not in hand")
 	}
 	if cmd.Amount <= 0 {
-		return nil, angzarr.NewCommandRejectedError("Amount must be positive")
+		return nil, angzarr.NewInvalidArgumentError("Amount must be positive")
 	}
 
 	// Compute
@@ -160,7 +160,7 @@ func HandlePlayerAction(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*a
 
 	case examples.ActionType_CHECK:
 		if amountToCall > 0 {
-			return nil, angzarr.NewCommandRejectedError("Cannot check, must call or fold")
+			return nil, angzarr.NewInvalidArgumentError("Cannot check, must call or fold")
 		}
 
 	case examples.ActionType_CALL:
@@ -174,14 +174,14 @@ func HandlePlayerAction(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*a
 
 	case examples.ActionType_BET:
 		if state.CurrentBet > 0 {
-			return nil, angzarr.NewCommandRejectedError("Cannot bet, use raise")
+			return nil, angzarr.NewInvalidArgumentError("Cannot bet, use raise")
 		}
 		minBet := state.MinRaise
 		if minBet == 0 {
 			minBet = 10
 		}
 		if cmd.Amount < minBet {
-			return nil, angzarr.NewCommandRejectedError(fmt.Sprintf("Bet must be at least %d", minBet))
+			return nil, angzarr.NewInvalidArgumentError(fmt.Sprintf("Bet must be at least %d", minBet))
 		}
 		actualAmount = cmd.Amount
 		if actualAmount > player.Stack {
@@ -190,12 +190,12 @@ func HandlePlayerAction(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*a
 
 	case examples.ActionType_RAISE:
 		if state.CurrentBet <= 0 {
-			return nil, angzarr.NewCommandRejectedError("Cannot raise, use bet")
+			return nil, angzarr.NewInvalidArgumentError("Cannot raise, use bet")
 		}
 		totalBet := cmd.Amount
 		raiseAmount := totalBet - state.CurrentBet
 		if raiseAmount < state.MinRaise {
-			return nil, angzarr.NewCommandRejectedError("Raise below minimum")
+			return nil, angzarr.NewInvalidArgumentError("Raise below minimum")
 		}
 		actualAmount = totalBet - player.BetThisRound
 		if actualAmount > player.Stack {
@@ -257,7 +257,7 @@ func HandleDealCommunityCards(_ *pb.EventBook, cmdAny *anypb.Any, state HandStat
 		return nil, angzarr.NewCommandRejectedError("Hand already complete")
 	}
 	if state.GameVariant == examples.GameVariant_FIVE_CARD_DRAW {
-		return nil, angzarr.NewCommandRejectedError("Five Card Draw does not use community cards")
+		return nil, angzarr.NewInvalidArgumentError("Five Card Draw does not use community cards")
 	}
 
 	// Validate
@@ -275,7 +275,7 @@ func HandleDealCommunityCards(_ *pb.EventBook, cmdAny *anypb.Any, state HandStat
 		newPhase = examples.BettingPhase_RIVER
 		cardsToDeal = 1
 	default:
-		return nil, angzarr.NewCommandRejectedError("Cannot deal more community cards")
+		return nil, angzarr.NewInvalidArgumentError("Cannot deal more community cards")
 	}
 
 	if cmd.Count > 0 && int(cmd.Count) != cardsToDeal {
@@ -315,7 +315,7 @@ func HandleRequestDraw(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*an
 		return nil, angzarr.NewCommandRejectedError("Hand already complete")
 	}
 	if state.GameVariant != examples.GameVariant_FIVE_CARD_DRAW {
-		return nil, angzarr.NewCommandRejectedError("Draw is not supported in this game variant")
+		return nil, angzarr.NewInvalidArgumentError("Draw is not supported in this game variant")
 	}
 
 	// Validate
@@ -398,10 +398,10 @@ func HandleRevealCards(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*an
 		return anypb.New(event)
 	}
 
-	handRank := evaluateHand(state.GameVariant, player.HoleCards, state.CommunityCards)
+	handRank := EvaluateHand(state.GameVariant, player.HoleCards, state.CommunityCards)
 	ranking := &examples.HandRanking{
-		RankType: handRank.rankType,
-		Score:    handRank.score,
+		RankType: handRank.RankType,
+		Score:    handRank.Score,
 	}
 
 	event := &examples.CardsRevealed{
@@ -556,32 +556,36 @@ func getCardsPerPlayer(variant examples.GameVariant) int {
 
 // Hand evaluation helpers
 
-type handRank struct {
-	rankType examples.HandRankType
-	score    int32
+// HandRank holds the result of a hand evaluation.
+type HandRank struct {
+	RankType examples.HandRankType
+	Score    int32
 }
 
-func evaluateHand(variant examples.GameVariant, holeCards, communityCards []*examples.Card) *handRank {
+type handRank = HandRank
+
+// EvaluateHand evaluates a poker hand given the game variant, hole cards, and community cards.
+func EvaluateHand(variant examples.GameVariant, holeCards, communityCards []*examples.Card) *HandRank {
 	switch variant {
 	case examples.GameVariant_TEXAS_HOLDEM:
 		allCards := append(holeCards, communityCards...)
 		if len(allCards) < 5 {
-			return &handRank{rankType: examples.HandRankType_HIGH_CARD, score: 0}
+			return &HandRank{RankType: examples.HandRankType_HIGH_CARD, Score: 0}
 		}
 		return findBestFive(allCards)
 	case examples.GameVariant_FIVE_CARD_DRAW:
 		if len(holeCards) < 5 {
-			return &handRank{rankType: examples.HandRankType_HIGH_CARD, score: 0}
+			return &HandRank{RankType: examples.HandRankType_HIGH_CARD, Score: 0}
 		}
 		return evaluateFive(holeCards[:5])
 	default:
-		return &handRank{rankType: examples.HandRankType_HIGH_CARD, score: 0}
+		return &HandRank{RankType: examples.HandRankType_HIGH_CARD, Score: 0}
 	}
 }
 
 func findBestFive(cards []*examples.Card) *handRank {
 	if len(cards) < 5 {
-		return &handRank{rankType: examples.HandRankType_HIGH_CARD, score: 0}
+		return &HandRank{RankType: examples.HandRankType_HIGH_CARD, Score: 0}
 	}
 
 	var bestRank *handRank
@@ -589,20 +593,20 @@ func findBestFive(cards []*examples.Card) *handRank {
 	combos := combinations(cards, 5)
 	for _, combo := range combos {
 		rank := evaluateFive(combo)
-		if bestRank == nil || rank.score > bestRank.score {
+		if bestRank == nil || rank.Score > bestRank.Score {
 			bestRank = rank
 		}
 	}
 
 	if bestRank == nil {
-		return &handRank{rankType: examples.HandRankType_HIGH_CARD, score: 0}
+		return &HandRank{RankType: examples.HandRankType_HIGH_CARD, Score: 0}
 	}
 	return bestRank
 }
 
 func evaluateFive(cards []*examples.Card) *handRank {
 	if len(cards) != 5 {
-		return &handRank{rankType: examples.HandRankType_HIGH_CARD, score: 0}
+		return &HandRank{RankType: examples.HandRankType_HIGH_CARD, Score: 0}
 	}
 
 	rankCounts := make(map[int32]int)
@@ -655,13 +659,13 @@ func evaluateFive(cards []*examples.Card) *handRank {
 		}
 		if high == int32(examples.Rank_ACE) && !isWheel {
 			return &handRank{
-				rankType: examples.HandRankType_ROYAL_FLUSH,
-				score:    10_000_000,
+				RankType: examples.HandRankType_ROYAL_FLUSH,
+				Score:    10_000_000,
 			}
 		}
 		return &handRank{
-			rankType: examples.HandRankType_STRAIGHT_FLUSH,
-			score:    9_000_000 + high,
+			RankType: examples.HandRankType_STRAIGHT_FLUSH,
+			Score:    9_000_000 + high,
 		}
 	}
 
@@ -669,8 +673,8 @@ func evaluateFive(cards []*examples.Card) *handRank {
 		quadRank := counts[0].rank
 		kicker := counts[1].rank
 		return &handRank{
-			rankType: examples.HandRankType_FOUR_OF_A_KIND,
-			score:    8_000_000 + quadRank*100 + kicker,
+			RankType: examples.HandRankType_FOUR_OF_A_KIND,
+			Score:    8_000_000 + quadRank*100 + kicker,
 		}
 	}
 
@@ -678,16 +682,16 @@ func evaluateFive(cards []*examples.Card) *handRank {
 		tripsRank := counts[0].rank
 		pairRank := counts[1].rank
 		return &handRank{
-			rankType: examples.HandRankType_FULL_HOUSE,
-			score:    7_000_000 + tripsRank*100 + pairRank,
+			RankType: examples.HandRankType_FULL_HOUSE,
+			Score:    7_000_000 + tripsRank*100 + pairRank,
 		}
 	}
 
 	if isFlush {
 		score := rankScore(ranks)
 		return &handRank{
-			rankType: examples.HandRankType_FLUSH,
-			score:    6_000_000 + score,
+			RankType: examples.HandRankType_FLUSH,
+			Score:    6_000_000 + score,
 		}
 	}
 
@@ -697,16 +701,16 @@ func evaluateFive(cards []*examples.Card) *handRank {
 			high = 5
 		}
 		return &handRank{
-			rankType: examples.HandRankType_STRAIGHT,
-			score:    5_000_000 + high,
+			RankType: examples.HandRankType_STRAIGHT,
+			Score:    5_000_000 + high,
 		}
 	}
 
 	if len(countPattern) >= 3 && countPattern[0] == 3 && countPattern[1] == 1 && countPattern[2] == 1 {
 		tripsRank := counts[0].rank
 		return &handRank{
-			rankType: examples.HandRankType_THREE_OF_A_KIND,
-			score:    4_000_000 + tripsRank*1000,
+			RankType: examples.HandRankType_THREE_OF_A_KIND,
+			Score:    4_000_000 + tripsRank*1000,
 		}
 	}
 
@@ -715,23 +719,23 @@ func evaluateFive(cards []*examples.Card) *handRank {
 		lowPair := counts[1].rank
 		kicker := counts[2].rank
 		return &handRank{
-			rankType: examples.HandRankType_TWO_PAIR,
-			score:    3_000_000 + highPair*1000 + lowPair*50 + kicker,
+			RankType: examples.HandRankType_TWO_PAIR,
+			Score:    3_000_000 + highPair*1000 + lowPair*50 + kicker,
 		}
 	}
 
 	if len(countPattern) >= 4 && countPattern[0] == 2 {
 		pairRank := counts[0].rank
 		return &handRank{
-			rankType: examples.HandRankType_PAIR,
-			score:    2_000_000 + pairRank*10000,
+			RankType: examples.HandRankType_PAIR,
+			Score:    2_000_000 + pairRank*10000,
 		}
 	}
 
 	score := rankScore(ranks)
 	return &handRank{
-		rankType: examples.HandRankType_HIGH_CARD,
-		score:    1_000_000 + score,
+		RankType: examples.HandRankType_HIGH_CARD,
+		Score:    1_000_000 + score,
 	}
 }
 

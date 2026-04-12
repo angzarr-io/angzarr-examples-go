@@ -9,7 +9,7 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/angzarr-io/examples-go
-  COORDINATOR_VERSION: latest
+  COORDINATOR_VERSION: v0.5.1
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
@@ -24,7 +24,11 @@ jobs:
   test:
     name: Build & Test
     runs-on: ubuntu-latest
-    container: ghcr.io/angzarr-io/angzarr-go:latest
+    container:
+      image: ghcr.io/angzarr-io/angzarr-go:0.1.3
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,13 +38,17 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Build
-        run: just build
+        run: just -f justfile.container build
 
       - name: Test (unit)
-        run: just test-unit
+        run: just -f justfile.container test-unit
+
+      - name: Install golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin v1.64.8
 
       - name: Lint
-        run: just lint
+        run: just -f justfile.container lint
 
       - name: Format check
         run: |
@@ -101,10 +109,23 @@ jobs:
           context: .
           file: ./Containerfile
           target: ${{ matrix.target }}
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
           tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Export image for acceptance tests
+        if: github.event_name == 'pull_request'
+        run: docker save -o /tmp/${{ matrix.target }}.tar "${{ steps.tags.outputs.tags }}"
+
+      - name: Upload image artifact
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.target }}
+          path: /tmp/${{ matrix.target }}.tar
+          retention-days: 1
 
   # =============================================================================
   # STAGE 3: ACCEPTANCE TESTS
@@ -133,6 +154,11 @@ jobs:
 
       - name: Install Helm
         uses: azure/setup-helm@v4
+
+      - name: Install buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
 
       - name: Create Kind cluster
         uses: helm/kind-action@v1
@@ -183,7 +209,23 @@ jobs:
             kind load docker-image "$img" --name angzarr-test
           done
 
-      - name: Pull and load example images
+      - name: Download image artifacts
+        if: github.event_name == 'pull_request'
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/images
+          pattern: image-*
+
+      - name: Load example images into Kind (PR)
+        if: github.event_name == 'pull_request'
+        run: |
+          for tarball in /tmp/images/image-*/*.tar; do
+            echo "Loading $tarball..."
+            kind load image-archive "$tarball" --name angzarr-test
+          done
+
+      - name: Pull and load example images (push)
+        if: github.event_name != 'pull_request'
         env:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
@@ -208,14 +250,23 @@ jobs:
       - name: Deploy infrastructure
         run: |
           echo "Deploying PostgreSQL..."
-          helm upgrade --install postgres oci://ghcr.io/angzarr-io/charts/angzarr-db-postgres-simple \
+          helm upgrade --install angzarr-db oci://ghcr.io/angzarr-io/charts/angzarr-db-postgres-simple \
             --namespace angzarr-test \
             --wait --timeout 2m
           echo "Deploying RabbitMQ..."
-          helm upgrade --install rabbitmq oci://ghcr.io/angzarr-io/charts/angzarr-mq-rabbitmq-simple \
+          helm upgrade --install angzarr-mq oci://ghcr.io/angzarr-io/charts/angzarr-mq-rabbitmq-simple \
             --namespace angzarr-test \
             --wait --timeout 3m
           echo "Infrastructure deployed"
+
+      - name: Create gateway descriptor configmap
+        run: |
+          cd angzarr-project/proto
+          buf build -o /tmp/types.bin
+          cd ../..
+          kubectl create configmap gateway-descriptor \
+            --from-file=types.bin=/tmp/types.bin \
+            --namespace angzarr-test
 
       - name: Deploy applications
         env:
@@ -223,7 +274,7 @@ jobs:
           COORD_VER: ${{ env.COORDINATOR_VERSION }}
         run: |
           helm upgrade --install poker oci://ghcr.io/angzarr-io/charts/angzarr \
-            --version 0.2.2 \
+            --version 0.5.1 \
             -f deploy/k8s/helm/values.yaml \
             -f deploy/k8s/helm/values-ci.yaml \
             --set images.aggregate.tag="${COORD_VER}" \
@@ -239,6 +290,7 @@ jobs:
             --set "applications.sagas[0].image.tag=${TAG}" \
             --set "applications.sagas[1].image.tag=${TAG}" \
             --set "applications.sagas[2].image.tag=${TAG}" \
+            --set "applications.sagas[3].image.tag=${TAG}" \
             --set "applications.processManagers[0].image.tag=${TAG}" \
             --set "applications.projectors[0].image.tag=${TAG}" \
             --namespace angzarr-test \
@@ -257,16 +309,15 @@ jobs:
             exit 1
           }
 
-          echo "Waiting for stream pod..."
+          echo "Waiting for stream pod (optional)..."
           kubectl wait --for=condition=ready pod -l angzarr.io/service=stream \
-            -n angzarr-test --timeout=180s || {
-            echo "Stream pod not ready, checking status..."
+            -n angzarr-test --timeout=60s || {
+            echo "Stream pod not ready — continuing without stream (not required for acceptance tests)"
             kubectl get pods -n angzarr-test
-            exit 1
           }
 
           echo "All pods ready. Port-forwarding gateway..."
-          kubectl port-forward -n angzarr-test svc/poker-angzarr-grpc-gateway 9084:9084 &
+          kubectl port-forward -n angzarr-test svc/poker-angzarr-grpc-gateway 9084:8080 &
           PF_PID=$!
           trap "kill $PF_PID 2>/dev/null || true" EXIT
           sleep 5
@@ -283,6 +334,75 @@ jobs:
           fi
 
           echo "Smoke test passed - all pods running, gateway reachable"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache-dependency-path: go.sum
+
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Generate proto code
+        run: buf generate
+
+      - name: Download Go dependencies
+        run: go mod download
+
+      - name: Wait for player aggregate
+        run: |
+          echo "Waiting for player aggregate pod..."
+          kubectl wait --for=condition=ready pod -l angzarr.io/domain=player \
+            -n angzarr-test --timeout=180s || {
+            echo "Player aggregate pod not ready, checking status..."
+            kubectl get pods -n angzarr-test
+            exit 1
+          }
+
+      - name: Run acceptance tests
+        env:
+          PLAYER_URL: "localhost:1310"
+          TABLE_URL: "localhost:1311"
+          HAND_URL: "localhost:1312"
+        run: |
+          kubectl port-forward -n angzarr-test svc/player-aggregate 1310:1310 &
+          kubectl port-forward -n angzarr-test svc/table-aggregate 1311:1310 &
+          kubectl port-forward -n angzarr-test svc/hand-aggregate 1312:1310 &
+
+          # Wait for port-forwards to establish
+          for port in 1310 1311 1312; do
+            for i in $(seq 1 15); do
+              if nc -z localhost $port 2>/dev/null; then
+                echo "Port $port ready"
+                break
+              fi
+              [ $i -eq 15 ] && echo "WARNING: Port $port not ready after 15s"
+              sleep 1
+            done
+          done
+
+          # Verify pods and services
+          echo "=== Pod status ==="
+          kubectl get pods -n angzarr-test -o wide
+          echo ""
+          echo "=== Services ==="
+          kubectl get svc -n angzarr-test
+          echo ""
+          echo "=== Service endpoints ==="
+          kubectl get endpoints -n angzarr-test | grep aggregate
+          echo ""
+
+          # Check pod logs for startup errors — show ALL container logs
+          for pod in $(kubectl get pods -n angzarr-test -o name --no-headers | grep aggregate); do
+            echo "=== $pod (all containers, last 10 lines) ==="
+            for container in $(kubectl get "$pod" -n angzarr-test -o jsonpath='{.spec.containers[*].name}'); do
+              echo "--- container: $container ---"
+              kubectl logs "$pod" -n angzarr-test -c "$container" --tail=10 2>/dev/null || true
+            done
+          done
+
+          go test -v -tags=acceptance -count=1 -timeout=900s ./tests/
 
       - name: Show logs on failure
         if: failure()

@@ -1,0 +1,18 @@
+# CI infrastructure values
+storage:
+  type: postgres
+  postgres:
+    host: "angzarr-db"
+    port: 5432
+    database: "angzarr"
+    username: "angzarr"
+    password: "angzarr"
+    uri: "postgres://angzarr:angzarr@angzarr-db:5432/angzarr"
+
+messaging:
+  type: amqp
+  amqp:
+    enabled: true
+    host: "angzarr-mq"
+    port: 5672
+    url: "amqp://angzarr:angzarr@angzarr-mq:5672"

@@ -28,7 +28,7 @@ func validateDepositFunds(cmd *examples.DepositFunds) (int64, error) {
 		amount = cmd.Amount.Amount
 	}
 	if amount <= 0 {
-		return 0, angzarr.NewCommandRejectedError("amount must be positive")
+		return 0, angzarr.NewInvalidArgumentError("amount must be positive")
 	}
 	return amount, nil
 }
