@@ -44,6 +44,9 @@ func commandFailsWithStatus(status string) error {
 	if !errors.As(sharedContext.LastError, &cmdErr) {
 		return fmt.Errorf("expected CommandRejectedError, got %T: %v", sharedContext.LastError, sharedContext.LastError)
 	}
+	if cmdErr.StatusCode != status {
+		return fmt.Errorf("expected status %s, got %s", status, cmdErr.StatusCode)
+	}
 	return nil
 }
 

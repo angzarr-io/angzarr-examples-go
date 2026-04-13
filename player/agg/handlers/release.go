@@ -20,7 +20,7 @@ func guardReleaseFunds(state PlayerState) error {
 }
 
 func validateReleaseFunds(cmd *examples.ReleaseFunds, state PlayerState) (int64, error) {
-	if cmd.TableRoot == nil || len(cmd.TableRoot) == 0 {
+	if len(cmd.TableRoot) == 0 {
 		return 0, angzarr.NewCommandRejectedError("table_root is required")
 	}
 

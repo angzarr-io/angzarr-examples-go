@@ -24,7 +24,7 @@ func validateWithdrawFunds(cmd *examples.WithdrawFunds, state PlayerState) (int6
 		amount = cmd.Amount.Amount
 	}
 	if amount <= 0 {
-		return 0, angzarr.NewCommandRejectedError("amount must be positive")
+		return 0, angzarr.NewInvalidArgumentError("amount must be positive")
 	}
 	if amount > state.AvailableBalance() {
 		return 0, angzarr.NewCommandRejectedError("insufficient available balance")

@@ -41,10 +41,7 @@ func NewHandFlowPM() *HandFlowPM {
 	pm.Init("pmg-hand-flow", "pmg-hand-flow", []string{"table", "hand"})
 	pm.WithStateFactory(func() *PMState { return &PMState{} })
 
-	// Register prepare handlers
-	pm.Prepares(pm.prepareHandStarted)
-
-	// Register event handlers
+	// Register event handlers (destinations are now config-driven, no Prepares needed)
 	pm.Handles(pm.handleHandStarted)
 	pm.Handles(pm.handleCardsDealt)
 	pm.Handles(pm.handleBlindPosted)
@@ -53,18 +50,6 @@ func NewHandFlowPM() *HandFlowPM {
 	pm.Handles(pm.handlePotAwarded)
 
 	return pm
-}
-
-// prepareHandStarted declares the hand destination needed when a hand starts.
-func (pm *HandFlowPM) prepareHandStarted(
-	trigger *pb.EventBook,
-	state *PMState,
-	event *examples.HandStarted,
-) []*pb.Cover {
-	return []*pb.Cover{{
-		Domain: "hand",
-		Root:   &pb.UUID{Value: event.HandRoot},
-	}}
 }
 
 // handleHandStarted processes the HandStarted event.

@@ -44,6 +44,9 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// Process manager steps
 	RegisterPMSteps(ctx)
 
+	// Orchestration PM steps (BuyIn, Registration, Rebuy)
+	RegisterOrchestrationSteps(ctx)
+
 	// Projector steps
 	RegisterProjectorSteps(ctx)
 

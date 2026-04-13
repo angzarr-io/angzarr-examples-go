@@ -35,16 +35,16 @@ func HandleCreateTable(_ *pb.EventBook, cmdAny *anypb.Any, state TableState) (*a
 		return nil, angzarr.NewCommandRejectedError("table_name is required")
 	}
 	if cmd.SmallBlind <= 0 {
-		return nil, angzarr.NewCommandRejectedError("small_blind must be positive")
+		return nil, angzarr.NewInvalidArgumentError("small_blind must be positive")
 	}
 	if cmd.BigBlind <= 0 || cmd.BigBlind < cmd.SmallBlind {
 		return nil, angzarr.NewCommandRejectedError("big_blind must be >= small_blind")
 	}
 	if cmd.MinBuyIn <= 0 {
-		return nil, angzarr.NewCommandRejectedError("min_buy_in must be positive")
+		return nil, angzarr.NewInvalidArgumentError("min_buy_in must be positive")
 	}
 	if cmd.MaxBuyIn < cmd.MinBuyIn {
-		return nil, angzarr.NewCommandRejectedError("max_buy_in must be >= min_buy_in")
+		return nil, angzarr.NewInvalidArgumentError("max_buy_in must be >= min_buy_in")
 	}
 	if cmd.MaxPlayers < 2 || cmd.MaxPlayers > 10 {
 		return nil, angzarr.NewCommandRejectedError("max_players must be 2-10")
@@ -89,7 +89,7 @@ func HandleJoinTable(_ *pb.EventBook, cmdAny *anypb.Any, state TableState) (*any
 		return nil, angzarr.NewCommandRejectedError("Table is full")
 	}
 	if cmd.BuyInAmount < state.MinBuyIn {
-		return nil, angzarr.NewCommandRejectedError(
+		return nil, angzarr.NewInvalidArgumentError(
 			fmt.Sprintf("Buy-in must be at least %d", state.MinBuyIn))
 	}
 	if cmd.BuyInAmount > state.MaxBuyIn {
@@ -98,7 +98,7 @@ func HandleJoinTable(_ *pb.EventBook, cmdAny *anypb.Any, state TableState) (*any
 	}
 
 	// Determine seat position
-	seatPos := int32(-1)
+	var seatPos int32
 	if cmd.PreferredSeat >= 0 && cmd.PreferredSeat < state.MaxPlayers {
 		// Specific seat requested
 		if _, occupied := state.Seats[cmd.PreferredSeat]; occupied {

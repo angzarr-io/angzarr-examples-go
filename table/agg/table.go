@@ -74,6 +74,7 @@ func NewTable(eventBook *pb.EventBook) *Table {
 	t.Handles(t.leave)
 	t.Handles(t.startHand)
 	t.Handles(t.endHand)
+	t.Handles(t.addChips)
 
 	return t
 }
@@ -145,9 +146,9 @@ func (t *Table) applyHandEnded(state *TableState, event *examples.HandEnded) {
 }
 
 func (t *Table) applyChipsAdded(state *TableState, event *examples.ChipsAdded) {
-	pos := t.findSeatByPlayer(t.State(), event.PlayerRoot)
+	pos := t.findSeatByPlayer(state, event.PlayerRoot)
 	if pos >= 0 {
-		t.State().Seats[pos].Stack = event.NewStack
+		state.Seats[pos].Stack = event.NewStack
 	}
 }
 
@@ -227,16 +228,16 @@ func (t *Table) create(cmd *examples.CreateTable) (*examples.TableCreated, error
 		return nil, angzarr.NewCommandRejectedError("table_name is required")
 	}
 	if cmd.SmallBlind <= 0 {
-		return nil, angzarr.NewCommandRejectedError("small_blind must be positive")
+		return nil, angzarr.NewInvalidArgumentError("small_blind must be positive")
 	}
 	if cmd.BigBlind <= 0 || cmd.BigBlind < cmd.SmallBlind {
 		return nil, angzarr.NewCommandRejectedError("big_blind must be >= small_blind")
 	}
 	if cmd.MinBuyIn <= 0 {
-		return nil, angzarr.NewCommandRejectedError("min_buy_in must be positive")
+		return nil, angzarr.NewInvalidArgumentError("min_buy_in must be positive")
 	}
 	if cmd.MaxBuyIn < cmd.MinBuyIn {
-		return nil, angzarr.NewCommandRejectedError("max_buy_in must be >= min_buy_in")
+		return nil, angzarr.NewInvalidArgumentError("max_buy_in must be >= min_buy_in")
 	}
 	if cmd.MaxPlayers < 2 || cmd.MaxPlayers > 10 {
 		return nil, angzarr.NewCommandRejectedError("max_players must be 2-10")
@@ -275,7 +276,7 @@ func (t *Table) join(cmd *examples.JoinTable) (*examples.PlayerJoined, error) {
 		return nil, angzarr.NewCommandRejectedError("Table is full")
 	}
 	if cmd.BuyInAmount < state.MinBuyIn {
-		return nil, angzarr.NewCommandRejectedError(
+		return nil, angzarr.NewInvalidArgumentError(
 			fmt.Sprintf("Buy-in must be at least %d", state.MinBuyIn))
 	}
 	if cmd.BuyInAmount > state.MaxBuyIn {
@@ -347,9 +348,17 @@ func (t *Table) startHand(cmd *examples.StartHand) (*examples.HandStarted, error
 		return nil, angzarr.NewCommandRejectedError("Not enough players to start hand")
 	}
 
-	// Generate hand root (deterministic based on table + hand number)
+	// Generate hand root deterministically from the table's aggregate root + hand number.
+	// Uses the EventBook's Cover root (the table aggregate UUID) to ensure uniqueness
+	// across different table instances with the same name.
 	handNumber := state.HandCount + 1
-	handRootInput := fmt.Sprintf("angzarr.poker.hand.%s.%d", state.TableID, handNumber)
+	var tableRootHex string
+	if t.EventBook() != nil && t.EventBook().Cover != nil && t.EventBook().Cover.Root != nil {
+		tableRootHex = hex.EncodeToString(t.EventBook().Cover.Root.Value)
+	} else {
+		tableRootHex = state.TableID
+	}
+	handRootInput := fmt.Sprintf("angzarr.poker.hand.%s.%d", tableRootHex, handNumber)
 	hash := sha256.Sum256([]byte(handRootInput))
 	handRoot := hash[:16] // Use first 16 bytes as UUID-like identifier
 
@@ -410,6 +419,45 @@ func (t *Table) startHand(cmd *examples.StartHand) (*examples.HandStarted, error
 		BigBlind:           state.BigBlind,
 		ActivePlayers:      activePlayers,
 		StartedAt:          timestamppb.New(time.Now()),
+	}, nil
+}
+
+func (t *Table) addChips(cmd *examples.AddChips) (*examples.ChipsAdded, error) {
+	state := t.State()
+
+	// Guard
+	if !t.exists() {
+		return nil, angzarr.NewCommandRejectedError("Table does not exist")
+	}
+	if state.Status == "in_hand" {
+		return nil, angzarr.NewCommandRejectedError("cannot add chips during hand")
+	}
+
+	// Validate
+	if len(cmd.PlayerRoot) == 0 {
+		return nil, angzarr.NewInvalidArgumentError("player_root is required")
+	}
+	if cmd.Amount <= 0 {
+		return nil, angzarr.NewInvalidArgumentError("amount must be positive")
+	}
+	pos := t.findSeatByPlayer(state, cmd.PlayerRoot)
+	if pos < 0 {
+		return nil, angzarr.NewCommandRejectedError("Player is not seated at table")
+	}
+
+	seat := state.Seats[pos]
+	newStack := seat.Stack + cmd.Amount
+	if newStack > state.MaxBuyIn {
+		return nil, angzarr.NewCommandRejectedError(
+			fmt.Sprintf("Stack would exceed max buy-in of %d", state.MaxBuyIn))
+	}
+
+	// Compute
+	return &examples.ChipsAdded{
+		PlayerRoot: cmd.PlayerRoot,
+		Amount:     cmd.Amount,
+		NewStack:   newStack,
+		AddedAt:    timestamppb.New(time.Now()),
 	}, nil
 }
 

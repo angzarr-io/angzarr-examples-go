@@ -39,7 +39,7 @@ func writeLog(msg string) {
 	f := getLogFile()
 	if f != nil {
 		timestamp := time.Now().Format("2006-01-02T15:04:05.000")
-		f.WriteString(fmt.Sprintf("[%s] %s\n", timestamp, msg))
+		_, _ = f.WriteString(fmt.Sprintf("[%s] %s\n", timestamp, msg))
 	}
 }
 

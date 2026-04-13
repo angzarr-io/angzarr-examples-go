@@ -158,6 +158,8 @@ func (h *Hand) applyBlindPosted(state *HandState, event *examples.BlindPosted) {
 	state.Pots[0].Amount = event.PotTotal
 	if event.Amount > state.CurrentBet {
 		state.CurrentBet = event.Amount
+		// MinRaise is the big blind amount for the first betting round
+		state.MinRaise = event.Amount
 	}
 }
 
@@ -180,6 +182,12 @@ func (h *Hand) applyActionTaken(state *HandState, event *examples.ActionTaken) {
 		}
 	}
 	state.Pots[0].Amount = event.PotTotal
+	if event.AmountToCall > state.CurrentBet {
+		raiseSize := event.AmountToCall - state.CurrentBet
+		if raiseSize > state.MinRaise {
+			state.MinRaise = raiseSize
+		}
+	}
 	state.CurrentBet = event.AmountToCall
 }
 
@@ -190,6 +198,7 @@ func (h *Hand) applyBettingRoundComplete(state *HandState, event *examples.Betti
 		p.HasActed = false
 	}
 	state.CurrentBet = 0
+	state.MinRaise = 0
 
 	// Update stacks from snapshot
 	for _, snap := range event.Stacks {
@@ -205,6 +214,13 @@ func (h *Hand) applyBettingRoundComplete(state *HandState, event *examples.Betti
 func (h *Hand) applyCommunityCardsDealt(state *HandState, event *examples.CommunityCardsDealt) {
 	state.CommunityCards = event.AllCommunityCards
 	state.CurrentPhase = event.Phase
+	// New betting round: reset betting state
+	state.CurrentBet = 0
+	state.MinRaise = 0
+	for _, p := range state.Players {
+		p.BetThisRound = 0
+		p.HasActed = false
+	}
 }
 
 func (h *Hand) applyDrawCompleted(state *HandState, event *examples.DrawCompleted) {
@@ -275,15 +291,6 @@ func (h *Hand) getPlayerByRoot(root []byte) *PlayerHandState {
 	return h.State().Players[hex.EncodeToString(root)]
 }
 
-func (h *Hand) getPlayerByPosition(pos int32) *PlayerHandState {
-	for _, p := range h.State().Players {
-		if p.Position == pos {
-			return p
-		}
-	}
-	return nil
-}
-
 // --- Command Handlers ---
 
 func (h *Hand) dealCards(cmd *examples.DealCards) (*examples.CardsDealt, error) {
@@ -294,7 +301,7 @@ func (h *Hand) dealCards(cmd *examples.DealCards) (*examples.CardsDealt, error) 
 
 	// Validate
 	if len(cmd.Players) < 2 {
-		return nil, angzarr.NewCommandRejectedError("Need at least 2 players")
+		return nil, angzarr.NewInvalidArgumentError("Need at least 2 players")
 	}
 
 	// Compute
@@ -302,7 +309,7 @@ func (h *Hand) dealCards(cmd *examples.DealCards) (*examples.CardsDealt, error) 
 	seed := cmd.DeckSeed
 	if len(seed) == 0 {
 		seed = make([]byte, 32)
-		rand.Read(seed)
+		_, _ = rand.Read(seed)
 	}
 	shuffleDeck(deck, seed)
 
@@ -348,7 +355,7 @@ func (h *Hand) postBlind(cmd *examples.PostBlind) (*examples.BlindPosted, error)
 		return nil, angzarr.NewCommandRejectedError("Player not in hand")
 	}
 	if cmd.Amount <= 0 {
-		return nil, angzarr.NewCommandRejectedError("Amount must be positive")
+		return nil, angzarr.NewInvalidArgumentError("Amount must be positive")
 	}
 
 	// Compute
@@ -405,28 +412,34 @@ func (h *Hand) playerAction(cmd *examples.PlayerAction) (*examples.ActionTaken, 
 
 	case examples.ActionType_CHECK:
 		if amountToCall > 0 {
-			return nil, angzarr.NewCommandRejectedError("Cannot check, must call or fold")
+			// Treat check as call when there's an amount to match
+			actualAmount = amountToCall
+			if actualAmount > player.Stack {
+				actualAmount = player.Stack
+			}
 		}
 
 	case examples.ActionType_CALL:
 		if amountToCall <= 0 {
-			return nil, angzarr.NewCommandRejectedError("Nothing to call")
-		}
-		actualAmount = amountToCall
-		if actualAmount > player.Stack {
-			actualAmount = player.Stack
+			// Already matching current bet — treat as check
+			actualAmount = 0
+		} else {
+			actualAmount = amountToCall
+			if actualAmount > player.Stack {
+				actualAmount = player.Stack
+			}
 		}
 
 	case examples.ActionType_BET:
 		if state.CurrentBet > 0 {
-			return nil, angzarr.NewCommandRejectedError("Cannot bet, use raise")
+			return nil, angzarr.NewInvalidArgumentError("Cannot bet, use raise")
 		}
 		minBet := state.MinRaise
 		if minBet == 0 {
 			minBet = 10
 		}
 		if cmd.Amount < minBet {
-			return nil, angzarr.NewCommandRejectedError(fmt.Sprintf("Bet must be at least %d", minBet))
+			return nil, angzarr.NewInvalidArgumentError(fmt.Sprintf("Bet must be at least %d", minBet))
 		}
 		actualAmount = cmd.Amount
 		if actualAmount > player.Stack {
@@ -435,12 +448,12 @@ func (h *Hand) playerAction(cmd *examples.PlayerAction) (*examples.ActionTaken, 
 
 	case examples.ActionType_RAISE:
 		if state.CurrentBet <= 0 {
-			return nil, angzarr.NewCommandRejectedError("Cannot raise, use bet")
+			return nil, angzarr.NewInvalidArgumentError("Cannot raise, use bet")
 		}
 		totalBet := cmd.Amount
 		raiseAmount := totalBet - state.CurrentBet
 		if raiseAmount < state.MinRaise {
-			return nil, angzarr.NewCommandRejectedError("Raise below minimum")
+			return nil, angzarr.NewInvalidArgumentError("Raise below minimum")
 		}
 		actualAmount = totalBet - player.BetThisRound
 		if actualAmount > player.Stack {
@@ -496,7 +509,7 @@ func (h *Hand) dealCommunityCards(cmd *examples.DealCommunityCards) (*examples.C
 		return nil, angzarr.NewCommandRejectedError("Hand already complete")
 	}
 	if state.GameVariant == examples.GameVariant_FIVE_CARD_DRAW {
-		return nil, angzarr.NewCommandRejectedError("Five Card Draw does not use community cards")
+		return nil, angzarr.NewInvalidArgumentError("Five Card Draw does not use community cards")
 	}
 
 	// Validate
@@ -514,7 +527,7 @@ func (h *Hand) dealCommunityCards(cmd *examples.DealCommunityCards) (*examples.C
 		newPhase = examples.BettingPhase_RIVER
 		cardsToDeal = 1
 	default:
-		return nil, angzarr.NewCommandRejectedError("Cannot deal more community cards")
+		return nil, angzarr.NewInvalidArgumentError("Cannot deal more community cards")
 	}
 
 	if cmd.Count > 0 && int(cmd.Count) != cardsToDeal {
@@ -548,7 +561,7 @@ func (h *Hand) requestDraw(cmd *examples.RequestDraw) (*examples.DrawCompleted, 
 		return nil, angzarr.NewCommandRejectedError("Hand already complete")
 	}
 	if state.GameVariant != examples.GameVariant_FIVE_CARD_DRAW {
-		return nil, angzarr.NewCommandRejectedError("Draw is not supported in this game variant")
+		return nil, angzarr.NewInvalidArgumentError("Draw is not supported in this game variant")
 	}
 
 	// Validate
