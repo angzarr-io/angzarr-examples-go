@@ -50,6 +50,9 @@ func InitializeScenario(ctx *godog.ScenarioContext) {
 	// Projector steps
 	RegisterProjectorSteps(ctx)
 
+	// Tournament aggregate steps
+	RegisterTournamentSteps(ctx)
+
 	// Common steps (shared assertions)
 	InitCommonSteps(ctx)
 }

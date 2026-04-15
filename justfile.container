@@ -29,3 +29,7 @@ fmt:
 
 lint:
     golangci-lint run
+
+# Auto-format code
+fmt-fix:
+    gofmt -w .

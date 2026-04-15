@@ -70,3 +70,7 @@ run: build
 
 clean:
     rm -rf "{{ROOT}}/data"
+
+# Auto-format code
+fmt-fix:
+    just _container fmt-fix
