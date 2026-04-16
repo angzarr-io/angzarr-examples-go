@@ -18,7 +18,7 @@ func TestDepositIncreasesBankroll(t *testing.T) {
 		Amount: &examples.Currency{Amount: 500, CurrencyCode: "CHIPS"},
 	}
 
-	event := computeFundsDeposited(cmd, state, 500)
+	event := depositFundsCompute(cmd, state, 500)
 
 	assert.Equal(t, int64(1500), event.NewBalance.Amount)
 }
@@ -26,7 +26,7 @@ func TestDepositIncreasesBankroll(t *testing.T) {
 func TestDepositRejectsNonExistentPlayer(t *testing.T) {
 	state := PlayerState{} // PlayerID empty = doesn't exist
 
-	err := guardDepositFunds(state)
+	err := depositFundsGuard(state)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "does not exist")
@@ -37,7 +37,7 @@ func TestDepositRejectsZeroAmount(t *testing.T) {
 		Amount: &examples.Currency{Amount: 0, CurrencyCode: "CHIPS"},
 	}
 
-	_, err := validateDepositFunds(cmd)
+	_, err := depositFundsValidate(cmd)
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "positive")

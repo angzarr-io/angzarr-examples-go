@@ -2,18 +2,19 @@
 //
 // Subscribes to player, table, and hand domain events.
 // Writes formatted game logs to a file.
+//
+// Uses the OO-style implementation with ProjectorBase, method-based
+// handlers, and fluent registration.
 package main
 
 import (
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
-	"google.golang.org/protobuf/proto"
 )
 
 var logFile *os.File
@@ -41,104 +42,99 @@ func writeLog(msg string) {
 	}
 }
 
-func getSequence(page *pb.EventPage) uint32 {
-	return page.GetHeader().GetSequence()
+// docs:start:projector_oo
+// OutputProjector writes game events to a log file.
+type OutputProjector struct {
+	angzarr.ProjectorBase
 }
 
-// docs:start:projector_functional
-func handleEvents(events *pb.EventBook) (*pb.Projection, error) {
-	if events == nil || events.Cover == nil {
-		return &pb.Projection{}, nil
-	}
+// NewOutputProjector creates a new OutputProjector with registered handlers.
+func NewOutputProjector() *OutputProjector {
+	p := &OutputProjector{}
+	p.Init("output", []string{"player", "table", "hand"})
 
-	domain := events.Cover.Domain
-	rootID := angzarr.RootIDText(events)
+	// Register projection handlers
+	p.Projects(p.ProjectPlayerRegistered)
+	p.Projects(p.ProjectFundsDeposited)
+	p.Projects(p.ProjectTableCreated)
+	p.Projects(p.ProjectPlayerJoined)
+	p.Projects(p.ProjectHandStarted)
+	p.Projects(p.ProjectCardsDealt)
+	p.Projects(p.ProjectBlindPosted)
+	p.Projects(p.ProjectActionTaken)
+	p.Projects(p.ProjectPotAwarded)
+	p.Projects(p.ProjectHandComplete)
 
-	var seq uint32
-
-	for _, page := range events.Pages {
-		event := page.GetEvent()
-		if event == nil {
-			continue
-		}
-		seq = getSequence(page)
-
-		typeURL := event.TypeUrl
-		typeName := typeURL[strings.LastIndex(typeURL, ".")+1:]
-
-		msg := formatEvent(domain, rootID, typeName, event.Value)
-		writeLog(msg)
-	}
-
-	return &pb.Projection{
-		Cover:     events.Cover,
-		Projector: "output",
-		Sequence:  seq,
-	}, nil
+	return p
 }
 
-// docs:end:projector_functional
-
-func formatEvent(domain, rootID, typeName string, data []byte) string {
-	switch typeName {
-	case "PlayerRegistered":
-		var e examples.PlayerRegistered
-		if err := proto.Unmarshal(data, &e); err == nil {
-			return fmt.Sprintf("PLAYER %s registered: %s (%s)", rootID, e.DisplayName, e.Email)
-		}
-	case "FundsDeposited":
-		var e examples.FundsDeposited
-		if err := proto.Unmarshal(data, &e); err == nil {
-			return fmt.Sprintf("PLAYER %s deposited %d, balance: %d", rootID, e.Amount.Amount, e.NewBalance.Amount)
-		}
-	case "TableCreated":
-		var e examples.TableCreated
-		if err := proto.Unmarshal(data, &e); err == nil {
-			return fmt.Sprintf("TABLE %s created: %s (%s)", rootID, e.TableName, e.GameVariant.String())
-		}
-	case "PlayerJoined":
-		var e examples.PlayerJoined
-		if err := proto.Unmarshal(data, &e); err == nil {
-			return fmt.Sprintf("TABLE %s player %s joined with %d chips", rootID, angzarr.BytesToUUIDText(e.PlayerRoot), e.Stack)
-		}
-	case "HandStarted":
-		var e examples.HandStarted
-		if err := proto.Unmarshal(data, &e); err == nil {
-			return fmt.Sprintf("TABLE %s hand #%d started, %d players, dealer at position %d", rootID, e.HandNumber, len(e.ActivePlayers), e.DealerPosition)
-		}
-	case "CardsDealt":
-		var e examples.CardsDealt
-		if err := proto.Unmarshal(data, &e); err == nil {
-			return fmt.Sprintf("HAND %s cards dealt to %d players", rootID, len(e.PlayerCards))
-		}
-	case "BlindPosted":
-		var e examples.BlindPosted
-		if err := proto.Unmarshal(data, &e); err == nil {
-			return fmt.Sprintf("HAND %s player %s posted %s blind: %d", rootID, angzarr.BytesToUUIDText(e.PlayerRoot), e.BlindType, e.Amount)
-		}
-	case "ActionTaken":
-		var e examples.ActionTaken
-		if err := proto.Unmarshal(data, &e); err == nil {
-			return fmt.Sprintf("HAND %s player %s: %s %d", rootID, angzarr.BytesToUUIDText(e.PlayerRoot), e.Action.String(), e.Amount)
-		}
-	case "PotAwarded":
-		var e examples.PotAwarded
-		if err := proto.Unmarshal(data, &e); err == nil {
-			winners := make([]string, len(e.Winners))
-			for i, w := range e.Winners {
-				winners[i] = fmt.Sprintf("%s wins %d", angzarr.BytesToUUIDText(w.PlayerRoot), w.Amount)
-			}
-			return fmt.Sprintf("HAND %s pot awarded: %s", rootID, strings.Join(winners, ", "))
-		}
-	case "HandComplete":
-		var e examples.HandComplete
-		if err := proto.Unmarshal(data, &e); err == nil {
-			return fmt.Sprintf("HAND %s #%d complete", rootID, e.HandNumber)
-		}
-	}
-
-	return fmt.Sprintf("%s.%s [%s]", domain, typeName, rootID)
+func (p *OutputProjector) ProjectPlayerRegistered(event *examples.PlayerRegistered) *pb.Projection {
+	writeLog(fmt.Sprintf("PLAYER registered: %s (%s)", event.DisplayName, event.Email))
+	return nil
 }
+
+func (p *OutputProjector) ProjectFundsDeposited(event *examples.FundsDeposited) *pb.Projection {
+	amount := int64(0)
+	newBalance := int64(0)
+	if event.Amount != nil {
+		amount = event.Amount.Amount
+	}
+	if event.NewBalance != nil {
+		newBalance = event.NewBalance.Amount
+	}
+	writeLog(fmt.Sprintf("PLAYER deposited %d, balance: %d", amount, newBalance))
+	return nil
+}
+
+func (p *OutputProjector) ProjectTableCreated(event *examples.TableCreated) *pb.Projection {
+	writeLog(fmt.Sprintf("TABLE created: %s (%s)", event.TableName, event.GameVariant.String()))
+	return nil
+}
+
+func (p *OutputProjector) ProjectPlayerJoined(event *examples.PlayerJoined) *pb.Projection {
+	playerID := angzarr.BytesToUUIDText(event.PlayerRoot)
+	writeLog(fmt.Sprintf("TABLE player %s joined with %d chips", playerID, event.Stack))
+	return nil
+}
+
+func (p *OutputProjector) ProjectHandStarted(event *examples.HandStarted) *pb.Projection {
+	writeLog(fmt.Sprintf("TABLE hand #%d started, %d players, dealer at position %d",
+		event.HandNumber, len(event.ActivePlayers), event.DealerPosition))
+	return nil
+}
+
+func (p *OutputProjector) ProjectCardsDealt(event *examples.CardsDealt) *pb.Projection {
+	writeLog(fmt.Sprintf("HAND cards dealt to %d players", len(event.PlayerCards)))
+	return nil
+}
+
+func (p *OutputProjector) ProjectBlindPosted(event *examples.BlindPosted) *pb.Projection {
+	playerID := angzarr.BytesToUUIDText(event.PlayerRoot)
+	writeLog(fmt.Sprintf("HAND player %s posted %s blind: %d", playerID, event.BlindType, event.Amount))
+	return nil
+}
+
+func (p *OutputProjector) ProjectActionTaken(event *examples.ActionTaken) *pb.Projection {
+	playerID := angzarr.BytesToUUIDText(event.PlayerRoot)
+	writeLog(fmt.Sprintf("HAND player %s: %s %d", playerID, event.Action.String(), event.Amount))
+	return nil
+}
+
+func (p *OutputProjector) ProjectPotAwarded(event *examples.PotAwarded) *pb.Projection {
+	winners := make([]string, len(event.Winners))
+	for i, w := range event.Winners {
+		winners[i] = fmt.Sprintf("%s wins %d", angzarr.BytesToUUIDText(w.PlayerRoot), w.Amount)
+	}
+	writeLog(fmt.Sprintf("HAND pot awarded: %v", winners))
+	return nil
+}
+
+func (p *OutputProjector) ProjectHandComplete(event *examples.HandComplete) *pb.Projection {
+	writeLog(fmt.Sprintf("HAND #%d complete", event.HandNumber))
+	return nil
+}
+
+// docs:end:projector_oo
 
 func main() {
 	// Clear log file at startup
@@ -148,8 +144,6 @@ func main() {
 	}
 	os.Remove(path)
 
-	handler := angzarr.NewProjectorHandler("output", "player", "table", "hand").
-		WithHandle(handleEvents)
-
-	angzarr.RunProjectorServer("output", "50290", handler)
+	projector := NewOutputProjector()
+	angzarr.RunOOProjectorServer("output", "50290", &projector.ProjectorBase)
 }

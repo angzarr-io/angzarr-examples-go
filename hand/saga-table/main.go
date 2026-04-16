@@ -1,38 +1,46 @@
-// Saga: Hand → Table
+// Saga: Hand → Table (OO Pattern)
 //
 // Reacts to HandComplete events from Hand domain.
 // Sends EndHand commands to Table domain.
+//
+// Uses the OO-style implementation with SagaBase and method-based
+// handlers with fluent registration. The Handle method is overridden
+// to pass the source hand root (from the EventBook cover) to the handler.
 package main
 
 import (
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
 	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
 	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-// handleHandComplete translates HandComplete → EndHand.
-// Destinations are now config-driven; sequence stamping uses Destinations helper.
-func handleHandComplete(source *pb.EventBook, event *anypb.Any, destinations *angzarr.Destinations) ([]*pb.CommandBook, error) {
-	var handComplete examples.HandComplete
-	if err := proto.Unmarshal(event.Value, &handComplete); err != nil {
-		return nil, err
-	}
+// HandTableSaga translates HandComplete events to EndHand commands.
+type HandTableSaga struct {
+	angzarr.SagaBase
+	// handRoot is set by Handle before dispatching to the handler method.
+	handRoot []byte
+}
 
-	// Get correlation ID and hand_root from source
-	var correlationID string
-	var handRoot []byte
-	if source.Cover != nil {
-		correlationID = source.Cover.CorrelationId
-		if source.Cover.Root != nil {
-			handRoot = source.Cover.Root.Value
-		}
-	}
+// NewHandTableSaga creates a new HandTableSaga with registered handlers.
+func NewHandTableSaga() *HandTableSaga {
+	s := &HandTableSaga{}
+	s.Init("saga-hand-table", "hand", "table")
 
+	// Register event handler
+	s.Handles(s.HandleHandComplete)
+
+	return s
+}
+
+// HandleHandComplete translates HandComplete → EndHand.
+// Sagas are stateless translators - framework handles sequence stamping.
+func (s *HandTableSaga) HandleHandComplete(
+	event *examples.HandComplete,
+) (*pb.CommandBook, error) {
 	// Convert PotWinner to PotResult
-	results := make([]*examples.PotResult, len(handComplete.Winners))
-	for i, winner := range handComplete.Winners {
+	results := make([]*examples.PotResult, len(event.Winners))
+	for i, winner := range event.Winners {
 		results[i] = &examples.PotResult{
 			WinnerRoot:  winner.PlayerRoot,
 			Amount:      winner.Amount,
@@ -42,8 +50,9 @@ func handleHandComplete(source *pb.EventBook, event *anypb.Any, destinations *an
 	}
 
 	// Build EndHand command
+	// HandRoot comes from the source aggregate's root (set by Handle)
 	endHand := &examples.EndHand{
-		HandRoot: handRoot,
+		HandRoot: s.handRoot,
 		Results:  results,
 	}
 
@@ -52,11 +61,11 @@ func handleHandComplete(source *pb.EventBook, event *anypb.Any, destinations *an
 		return nil, err
 	}
 
-	cmd := &pb.CommandBook{
+	// Use angzarr_deferred - framework stamps sequence on delivery
+	return &pb.CommandBook{
 		Cover: &pb.Cover{
-			Domain:        "table",
-			Root:          &pb.UUID{Value: handComplete.TableRoot},
-			CorrelationId: correlationID,
+			Domain: "table",
+			Root:   &pb.UUID{Value: event.TableRoot},
 		},
 		Pages: []*pb.CommandPage{
 			{
@@ -64,20 +73,20 @@ func handleHandComplete(source *pb.EventBook, event *anypb.Any, destinations *an
 				Payload: &pb.CommandPage_Command{Command: cmdAny},
 			},
 		},
-	}
+	}, nil
+}
 
-	// Stamp with destination sequence if available
-	if destinations.Has("table") {
-		_ = destinations.StampCommand(cmd, "table")
+// Handle satisfies the OOSaga interface. Extracts the hand root from the source
+// EventBook cover before delegating to the base handler.
+func (s *HandTableSaga) Handle(source *pb.EventBook, _ *angzarr.Destinations) (*angzarr.SagaHandlerResponse, error) {
+	// Extract hand root from source aggregate
+	if source != nil && source.Cover != nil && source.Cover.Root != nil {
+		s.handRoot = source.Cover.Root.Value
 	}
-
-	return []*pb.CommandBook{cmd}, nil
+	return s.SagaBase.Handle(source)
 }
 
 func main() {
-	router := angzarr.NewEventRouter("saga-hand-table").
-		Domain("hand").
-		On("HandComplete", handleHandComplete)
-
-	angzarr.RunSagaServer("saga-hand-table", "50212", router)
+	saga := NewHandTableSaga()
+	angzarr.RunOOSagaServer("saga-hand-table", "50212", saga)
 }

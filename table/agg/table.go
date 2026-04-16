@@ -69,12 +69,12 @@ func NewTable(eventBook *pb.EventBook) *Table {
 	t.Applies(t.applyChipsAdded)
 
 	// Register command handlers
-	t.Handles(t.create)
-	t.Handles(t.join)
-	t.Handles(t.leave)
-	t.Handles(t.startHand)
-	t.Handles(t.endHand)
-	t.Handles(t.addChips)
+	t.Handles(t.HandleCreateTable)
+	t.Handles(t.HandleJoinTable)
+	t.Handles(t.HandleLeaveTable)
+	t.Handles(t.HandleStartHand)
+	t.Handles(t.HandleEndHand)
+	t.Handles(t.HandleAddChips)
 
 	return t
 }
@@ -217,7 +217,7 @@ func (t *Table) nextDealerPosition() int32 {
 
 // --- Command Handlers ---
 
-func (t *Table) create(cmd *examples.CreateTable) (*examples.TableCreated, error) {
+func (t *Table) HandleCreateTable(cmd *examples.CreateTable) (*examples.TableCreated, error) {
 	// Guard
 	if t.exists() {
 		return nil, angzarr.NewCommandRejectedError("Table already exists")
@@ -257,7 +257,7 @@ func (t *Table) create(cmd *examples.CreateTable) (*examples.TableCreated, error
 	}, nil
 }
 
-func (t *Table) join(cmd *examples.JoinTable) (*examples.PlayerJoined, error) {
+func (t *Table) HandleJoinTable(cmd *examples.JoinTable) (*examples.PlayerJoined, error) {
 	state := t.State()
 
 	// Guard
@@ -302,7 +302,7 @@ func (t *Table) join(cmd *examples.JoinTable) (*examples.PlayerJoined, error) {
 	}, nil
 }
 
-func (t *Table) leave(cmd *examples.LeaveTable) (*examples.PlayerLeft, error) {
+func (t *Table) HandleLeaveTable(cmd *examples.LeaveTable) (*examples.PlayerLeft, error) {
 	state := t.State()
 
 	// Guard
@@ -334,7 +334,7 @@ func (t *Table) leave(cmd *examples.LeaveTable) (*examples.PlayerLeft, error) {
 	}, nil
 }
 
-func (t *Table) startHand(cmd *examples.StartHand) (*examples.HandStarted, error) {
+func (t *Table) HandleStartHand(cmd *examples.StartHand) (*examples.HandStarted, error) {
 	state := t.State()
 
 	// Guard
@@ -422,7 +422,7 @@ func (t *Table) startHand(cmd *examples.StartHand) (*examples.HandStarted, error
 	}, nil
 }
 
-func (t *Table) addChips(cmd *examples.AddChips) (*examples.ChipsAdded, error) {
+func (t *Table) HandleAddChips(cmd *examples.AddChips) (*examples.ChipsAdded, error) {
 	state := t.State()
 
 	// Guard
@@ -461,7 +461,7 @@ func (t *Table) addChips(cmd *examples.AddChips) (*examples.ChipsAdded, error) {
 	}, nil
 }
 
-func (t *Table) endHand(cmd *examples.EndHand) (*examples.HandEnded, error) {
+func (t *Table) HandleEndHand(cmd *examples.EndHand) (*examples.HandEnded, error) {
 	state := t.State()
 
 	// Guard

@@ -11,14 +11,14 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func guardWithdrawFunds(state PlayerState) error {
+func withdrawFundsGuard(state PlayerState) error {
 	if !state.Exists() {
 		return angzarr.NewCommandRejectedError("Player does not exist")
 	}
 	return nil
 }
 
-func validateWithdrawFunds(cmd *examples.WithdrawFunds, state PlayerState) (int64, error) {
+func withdrawFundsValidate(cmd *examples.WithdrawFunds, state PlayerState) (int64, error) {
 	amount := int64(0)
 	if cmd.Amount != nil {
 		amount = cmd.Amount.Amount
@@ -32,7 +32,7 @@ func validateWithdrawFunds(cmd *examples.WithdrawFunds, state PlayerState) (int6
 	return amount, nil
 }
 
-func computeFundsWithdrawn(cmd *examples.WithdrawFunds, state PlayerState, amount int64) *examples.FundsWithdrawn {
+func withdrawFundsCompute(cmd *examples.WithdrawFunds, state PlayerState, amount int64) *examples.FundsWithdrawn {
 	newBalance := state.Bankroll - amount
 	return &examples.FundsWithdrawn{
 		Amount:      cmd.Amount,
@@ -53,15 +53,15 @@ func HandleWithdrawFunds(
 		return nil, err
 	}
 
-	if err := guardWithdrawFunds(state); err != nil {
+	if err := withdrawFundsGuard(state); err != nil {
 		return nil, err
 	}
-	amount, err := validateWithdrawFunds(&cmd, state)
+	amount, err := withdrawFundsValidate(&cmd, state)
 	if err != nil {
 		return nil, err
 	}
 
-	event := computeFundsWithdrawn(&cmd, state, amount)
+	event := withdrawFundsCompute(&cmd, state, amount)
 
 	eventAny, err := anypb.New(event)
 	if err != nil {

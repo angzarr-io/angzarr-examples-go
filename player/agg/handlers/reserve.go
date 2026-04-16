@@ -16,14 +16,14 @@ import (
 )
 
 // docs:start:reserve_funds_imp
-func guardReserveFunds(state PlayerState) error {
+func reserveFundsGuard(state PlayerState) error {
 	if !state.Exists() {
 		return angzarr.NewCommandRejectedError("Player does not exist")
 	}
 	return nil
 }
 
-func validateReserveFunds(cmd *examples.ReserveFunds, state PlayerState) (int64, error) {
+func reserveFundsValidate(cmd *examples.ReserveFunds, state PlayerState) (int64, error) {
 	amount := int64(0)
 	if cmd.Amount != nil {
 		amount = cmd.Amount.Amount
@@ -43,7 +43,7 @@ func validateReserveFunds(cmd *examples.ReserveFunds, state PlayerState) (int64,
 	return amount, nil
 }
 
-func computeFundsReserved(cmd *examples.ReserveFunds, state PlayerState, amount int64) *examples.FundsReserved {
+func reserveFundsCompute(cmd *examples.ReserveFunds, state PlayerState, amount int64) *examples.FundsReserved {
 	newReserved := state.ReservedFunds + amount
 	newAvailable := state.Bankroll - newReserved
 	return &examples.FundsReserved{
@@ -67,15 +67,15 @@ func HandleReserveFunds(
 		return nil, err
 	}
 
-	if err := guardReserveFunds(state); err != nil {
+	if err := reserveFundsGuard(state); err != nil {
 		return nil, err
 	}
-	amount, err := validateReserveFunds(&cmd, state)
+	amount, err := reserveFundsValidate(&cmd, state)
 	if err != nil {
 		return nil, err
 	}
 
-	event := computeFundsReserved(&cmd, state, amount)
+	event := reserveFundsCompute(&cmd, state, amount)
 
 	eventAny, err := anypb.New(event)
 	if err != nil {

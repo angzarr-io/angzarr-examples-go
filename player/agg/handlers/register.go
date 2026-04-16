@@ -24,14 +24,14 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func guardRegisterPlayer(state PlayerState) error {
+func registerPlayerGuard(state PlayerState) error {
 	if state.Exists() {
 		return angzarr.NewCommandRejectedError("Player already exists")
 	}
 	return nil
 }
 
-func validateRegisterPlayer(cmd *examples.RegisterPlayer) error {
+func registerPlayerValidate(cmd *examples.RegisterPlayer) error {
 	if cmd.DisplayName == "" {
 		return angzarr.NewCommandRejectedError("display_name is required")
 	}
@@ -41,7 +41,7 @@ func validateRegisterPlayer(cmd *examples.RegisterPlayer) error {
 	return nil
 }
 
-func computePlayerRegistered(cmd *examples.RegisterPlayer) *examples.PlayerRegistered {
+func registerPlayerCompute(cmd *examples.RegisterPlayer) *examples.PlayerRegistered {
 	return &examples.PlayerRegistered{
 		DisplayName:  cmd.DisplayName,
 		Email:        cmd.Email,
@@ -63,14 +63,14 @@ func HandleRegisterPlayer(
 		return nil, err
 	}
 
-	if err := guardRegisterPlayer(state); err != nil {
+	if err := registerPlayerGuard(state); err != nil {
 		return nil, err
 	}
-	if err := validateRegisterPlayer(&cmd); err != nil {
+	if err := registerPlayerValidate(&cmd); err != nil {
 		return nil, err
 	}
 
-	event := computePlayerRegistered(&cmd)
+	event := registerPlayerCompute(&cmd)
 
 	eventAny, err := anypb.New(event)
 	if err != nil {
