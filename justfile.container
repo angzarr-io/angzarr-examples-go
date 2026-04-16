@@ -22,6 +22,9 @@ test-unit: proto-gen
 test-acceptance: proto-gen
     PLAYER_URL="${PLAYER_URL:-localhost:1310}" go test -v -tags=acceptance ./tests/ -timeout=600s
 
+mutation-test: proto-gen
+    go mod tidy && go test -v -tags=mutation -run TestMutation -timeout 30m ./tests/
+
 test: test-unit test-acceptance
 
 fmt:

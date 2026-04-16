@@ -43,6 +43,9 @@ jobs:
       - name: Test (unit)
         run: just -f justfile.container test-unit
 
+      - name: Mutation test
+        run: just -f justfile.container mutation-test
+
       - name: Install golangci-lint
         run: |
           curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b /usr/local/bin v1.64.8

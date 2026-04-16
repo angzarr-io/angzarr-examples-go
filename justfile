@@ -52,6 +52,9 @@ test-unit:
 test-acceptance:
     just _container test-acceptance
 
+mutation-test:
+    just _container mutation-test
+
 test: test-unit test-acceptance
 
 fmt:
