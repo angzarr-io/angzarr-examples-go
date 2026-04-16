@@ -12,14 +12,14 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func guardReleaseFunds(state PlayerState) error {
+func releaseFundsGuard(state PlayerState) error {
 	if !state.Exists() {
 		return angzarr.NewCommandRejectedError("Player does not exist")
 	}
 	return nil
 }
 
-func validateReleaseFunds(cmd *examples.ReleaseFunds, state PlayerState) (int64, error) {
+func releaseFundsValidate(cmd *examples.ReleaseFunds, state PlayerState) (int64, error) {
 	if len(cmd.TableRoot) == 0 {
 		return 0, angzarr.NewCommandRejectedError("table_root is required")
 	}
@@ -33,7 +33,7 @@ func validateReleaseFunds(cmd *examples.ReleaseFunds, state PlayerState) (int64,
 	return reserved, nil
 }
 
-func computeFundsReleased(cmd *examples.ReleaseFunds, state PlayerState, reserved int64) *examples.FundsReleased {
+func releaseFundsCompute(cmd *examples.ReleaseFunds, state PlayerState, reserved int64) *examples.FundsReleased {
 	newReserved := state.ReservedFunds - reserved
 	newAvailable := state.Bankroll - newReserved
 	return &examples.FundsReleased{
@@ -57,15 +57,15 @@ func HandleReleaseFunds(
 		return nil, err
 	}
 
-	if err := guardReleaseFunds(state); err != nil {
+	if err := releaseFundsGuard(state); err != nil {
 		return nil, err
 	}
-	reserved, err := validateReleaseFunds(&cmd, state)
+	reserved, err := releaseFundsValidate(&cmd, state)
 	if err != nil {
 		return nil, err
 	}
 
-	event := computeFundsReleased(&cmd, state, reserved)
+	event := releaseFundsCompute(&cmd, state, reserved)
 
 	eventAny, err := anypb.New(event)
 	if err != nil {

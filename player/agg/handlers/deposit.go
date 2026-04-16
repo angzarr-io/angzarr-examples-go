@@ -12,7 +12,7 @@ import (
 )
 
 // docs:start:deposit_guard
-func guardDepositFunds(state PlayerState) error {
+func depositFundsGuard(state PlayerState) error {
 	if !state.Exists() {
 		return angzarr.NewCommandRejectedError("Player does not exist")
 	}
@@ -22,7 +22,7 @@ func guardDepositFunds(state PlayerState) error {
 // docs:end:deposit_guard
 
 // docs:start:deposit_validate
-func validateDepositFunds(cmd *examples.DepositFunds) (int64, error) {
+func depositFundsValidate(cmd *examples.DepositFunds) (int64, error) {
 	amount := int64(0)
 	if cmd.Amount != nil {
 		amount = cmd.Amount.Amount
@@ -36,7 +36,7 @@ func validateDepositFunds(cmd *examples.DepositFunds) (int64, error) {
 // docs:end:deposit_validate
 
 // docs:start:deposit_compute
-func computeFundsDeposited(cmd *examples.DepositFunds, state PlayerState, amount int64) *examples.FundsDeposited {
+func depositFundsCompute(cmd *examples.DepositFunds, state PlayerState, amount int64) *examples.FundsDeposited {
 	newBalance := state.Bankroll + amount
 	return &examples.FundsDeposited{
 		Amount:      cmd.Amount,
@@ -60,15 +60,15 @@ func HandleDepositFunds(
 		return nil, err
 	}
 
-	if err := guardDepositFunds(state); err != nil {
+	if err := depositFundsGuard(state); err != nil {
 		return nil, err
 	}
-	amount, err := validateDepositFunds(&cmd)
+	amount, err := depositFundsValidate(&cmd)
 	if err != nil {
 		return nil, err
 	}
 
-	event := computeFundsDeposited(&cmd, state, amount)
+	event := depositFundsCompute(&cmd, state, amount)
 
 	eventAny, err := anypb.New(event)
 	if err != nil {

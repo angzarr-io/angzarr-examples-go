@@ -104,13 +104,13 @@ func NewHand(eventBook *pb.EventBook) *Hand {
 	h.Applies(h.applyHandComplete)
 
 	// Register command handlers
-	h.Handles(h.dealCards)
-	h.Handles(h.postBlind)
-	h.Handles(h.playerAction)
-	h.Handles(h.dealCommunityCards)
-	h.Handles(h.requestDraw)
-	h.Handles(h.revealCards)
-	h.HandlesMulti(h.awardPot)
+	h.Handles(h.HandleDealCards)
+	h.Handles(h.HandlePostBlind)
+	h.Handles(h.HandlePlayerAction)
+	h.Handles(h.HandleDealCommunityCards)
+	h.Handles(h.HandleRequestDraw)
+	h.Handles(h.HandleRevealCards)
+	h.HandlesMulti(h.HandleAwardPot)
 
 	return h
 }
@@ -293,7 +293,7 @@ func (h *Hand) getPlayerByRoot(root []byte) *PlayerHandState {
 
 // --- Command Handlers ---
 
-func (h *Hand) dealCards(cmd *examples.DealCards) (*examples.CardsDealt, error) {
+func (h *Hand) HandleDealCards(cmd *examples.DealCards) (*examples.CardsDealt, error) {
 	// Guard
 	if h.exists() {
 		return nil, angzarr.NewCommandRejectedError("Hand already dealt")
@@ -340,7 +340,7 @@ func (h *Hand) dealCards(cmd *examples.DealCards) (*examples.CardsDealt, error) 
 	}, nil
 }
 
-func (h *Hand) postBlind(cmd *examples.PostBlind) (*examples.BlindPosted, error) {
+func (h *Hand) HandlePostBlind(cmd *examples.PostBlind) (*examples.BlindPosted, error) {
 	// Guard
 	if !h.exists() {
 		return nil, angzarr.NewCommandRejectedError("Hand does not exist")
@@ -377,7 +377,7 @@ func (h *Hand) postBlind(cmd *examples.PostBlind) (*examples.BlindPosted, error)
 	}, nil
 }
 
-func (h *Hand) playerAction(cmd *examples.PlayerAction) (*examples.ActionTaken, error) {
+func (h *Hand) HandlePlayerAction(cmd *examples.PlayerAction) (*examples.ActionTaken, error) {
 	state := h.State()
 
 	// Guard
@@ -498,7 +498,7 @@ func (h *Hand) playerAction(cmd *examples.PlayerAction) (*examples.ActionTaken, 
 	}, nil
 }
 
-func (h *Hand) dealCommunityCards(cmd *examples.DealCommunityCards) (*examples.CommunityCardsDealt, error) {
+func (h *Hand) HandleDealCommunityCards(cmd *examples.DealCommunityCards) (*examples.CommunityCardsDealt, error) {
 	state := h.State()
 
 	// Guard
@@ -550,7 +550,7 @@ func (h *Hand) dealCommunityCards(cmd *examples.DealCommunityCards) (*examples.C
 	}, nil
 }
 
-func (h *Hand) requestDraw(cmd *examples.RequestDraw) (*examples.DrawCompleted, error) {
+func (h *Hand) HandleRequestDraw(cmd *examples.RequestDraw) (*examples.DrawCompleted, error) {
 	state := h.State()
 
 	// Guard
@@ -607,7 +607,7 @@ func (h *Hand) requestDraw(cmd *examples.RequestDraw) (*examples.DrawCompleted, 
 	}, nil
 }
 
-func (h *Hand) revealCards(cmd *examples.RevealCards) (*examples.CardsRevealed, error) {
+func (h *Hand) HandleRevealCards(cmd *examples.RevealCards) (*examples.CardsRevealed, error) {
 	state := h.State()
 
 	// Guard
@@ -656,7 +656,7 @@ func (h *Hand) revealCards(cmd *examples.RevealCards) (*examples.CardsRevealed, 
 	}, nil
 }
 
-func (h *Hand) awardPot(cmd *examples.AwardPot) ([]proto.Message, error) {
+func (h *Hand) HandleAwardPot(cmd *examples.AwardPot) ([]proto.Message, error) {
 	state := h.State()
 
 	// Guard

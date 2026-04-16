@@ -29,15 +29,15 @@ func NewPlayerTableSaga() *PlayerTableSaga {
 	s.Init("saga-player-table", "player", "table")
 
 	// Register event handlers
-	s.Handles(s.handleSittingOut)
-	s.Handles(s.handleReturningToPlay)
+	s.Handles(s.HandlePlayerSittingOut)
+	s.Handles(s.HandlePlayerReturningToPlay)
 
 	return s
 }
 
-// handleSittingOut translates PlayerSittingOut -> PlayerSatOut fact for table.
+// HandlePlayerSittingOut translates PlayerSittingOut -> PlayerSatOut fact for table.
 // Sagas are stateless translators - framework handles sequence stamping.
-func (s *PlayerTableSaga) handleSittingOut(
+func (s *PlayerTableSaga) HandlePlayerSittingOut(
 	event *examples.PlayerSittingOut,
 ) (*pb.CommandBook, error) {
 	// Create PlayerSatOut fact for the table
@@ -67,9 +67,9 @@ func (s *PlayerTableSaga) handleSittingOut(
 	return nil, nil
 }
 
-// handleReturningToPlay translates PlayerReturningToPlay -> PlayerSatIn fact for table.
+// HandlePlayerReturningToPlay translates PlayerReturningToPlay -> PlayerSatIn fact for table.
 // Sagas are stateless translators - framework handles sequence stamping.
-func (s *PlayerTableSaga) handleReturningToPlay(
+func (s *PlayerTableSaga) HandlePlayerReturningToPlay(
 	event *examples.PlayerReturningToPlay,
 ) (*pb.CommandBook, error) {
 	// Create PlayerSatIn fact for the table

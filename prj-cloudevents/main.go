@@ -1,7 +1,11 @@
-// Projector: CloudEvents
+// Projector: CloudEvents (OO Pattern)
 //
 // Transforms player domain events into CloudEvents format for external consumption.
 // Filters sensitive fields (email, internal IDs) before publishing.
+//
+// Uses the OO-style implementation with ProjectorBase. Since CloudEvents requires
+// accumulating events across an EventBook, the Handle method is overridden while
+// individual event methods provide typed transformation logic.
 package main
 
 import (
@@ -14,8 +18,42 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-// docs:start:cloudevents_projector
-func handlePlayerEvents(events *pb.EventBook) (*pb.Projection, error) {
+// CloudEventsProjector transforms player domain events into CloudEvents format.
+type CloudEventsProjector struct {
+	angzarr.ProjectorBase
+}
+
+// NewCloudEventsProjector creates a new CloudEventsProjector with registered handlers.
+func NewCloudEventsProjector() *CloudEventsProjector {
+	p := &CloudEventsProjector{}
+	p.Init("prj-player-cloudevents", []string{"player"})
+
+	// Register projection handlers for typed deserialization
+	p.Projects(p.ProjectPlayerRegistered)
+	p.Projects(p.ProjectFundsDeposited)
+	p.Projects(p.ProjectFundsWithdrawn)
+
+	return p
+}
+
+// ProjectPlayerRegistered transforms PlayerRegistered into a public CloudEvent.
+func (p *CloudEventsProjector) ProjectPlayerRegistered(event *examples.PlayerRegistered) *pb.Projection {
+	// Handled by custom Handle method - this registration enables type matching
+	return nil
+}
+
+// ProjectFundsDeposited transforms FundsDeposited into a public CloudEvent.
+func (p *CloudEventsProjector) ProjectFundsDeposited(event *examples.FundsDeposited) *pb.Projection {
+	return nil
+}
+
+// ProjectFundsWithdrawn transforms FundsWithdrawn into a public CloudEvent.
+func (p *CloudEventsProjector) ProjectFundsWithdrawn(event *examples.FundsWithdrawn) *pb.Projection {
+	return nil
+}
+
+// Handle overrides the base to accumulate CloudEvents across all pages in the EventBook.
+func (p *CloudEventsProjector) Handle(events *pb.EventBook) (*pb.Projection, error) {
 	if events == nil || events.Cover == nil {
 		return &pb.Projection{}, nil
 	}
@@ -105,11 +143,10 @@ func transformToCloudEvent(typeName string, data []byte) *pb.CloudEvent {
 	return nil
 }
 
-// docs:end:cloudevents_projector
-
 func main() {
+	projector := NewCloudEventsProjector()
+	// Use custom Handle method via WithHandle
 	handler := angzarr.NewProjectorHandler("prj-player-cloudevents", "player").
-		WithHandle(handlePlayerEvents)
-
+		WithHandle(projector.Handle)
 	angzarr.RunProjectorServer("prj-player-cloudevents", "50291", handler)
 }

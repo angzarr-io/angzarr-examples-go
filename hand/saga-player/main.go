@@ -25,14 +25,14 @@ func NewHandPlayerSaga() *HandPlayerSaga {
 	s.Init("saga-hand-player", "hand", "player")
 
 	// Register event handler (multi-command)
-	s.HandlesMulti(s.handlePotAwarded)
+	s.HandlesMulti(s.HandlePotAwarded)
 
 	return s
 }
 
-// handlePotAwarded translates PotAwarded → DepositFunds for each winner.
+// HandlePotAwarded translates PotAwarded → DepositFunds for each winner.
 // Sagas are stateless translators - framework handles sequence stamping.
-func (s *HandPlayerSaga) handlePotAwarded(
+func (s *HandPlayerSaga) HandlePotAwarded(
 	event *examples.PotAwarded,
 	dests []*pb.EventBook,
 ) ([]*pb.CommandBook, error) {

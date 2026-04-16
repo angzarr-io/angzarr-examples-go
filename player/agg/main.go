@@ -17,6 +17,7 @@ func main() {
 		On("examples.WithdrawFunds", handlers.HandleWithdrawFunds).
 		On("examples.ReserveFunds", handlers.HandleReserveFunds).
 		On("examples.ReleaseFunds", handlers.HandleReleaseFunds).
+		On("examples.TransferFunds", handlers.HandleTransferFunds).
 		OnRejected("table", "examples.JoinTable", handlers.HandleTableJoinRejected)
 
 	angzarr.RunCommandHandlerServer("player", "50201", router)

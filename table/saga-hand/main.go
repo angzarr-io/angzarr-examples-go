@@ -31,14 +31,14 @@ func NewTableHandSaga() *TableHandSaga {
 	s.Init("saga-table-hand", "table", "hand")
 
 	// Register event handler
-	s.Handles(s.handleHandStarted)
+	s.Handles(s.HandleHandStarted)
 
 	return s
 }
 
-// handleHandStarted translates HandStarted → DealCards.
+// HandleHandStarted translates HandStarted → DealCards.
 // Sagas are stateless translators - framework handles sequence stamping.
-func (s *TableHandSaga) handleHandStarted(
+func (s *TableHandSaga) HandleHandStarted(
 	event *examples.HandStarted,
 ) (*pb.CommandBook, error) {
 	// Convert SeatSnapshot to PlayerInHand

@@ -42,18 +42,18 @@ func NewHandFlowPM() *HandFlowPM {
 	pm.WithStateFactory(func() *PMState { return &PMState{} })
 
 	// Register event handlers (destinations are now config-driven, no Prepares needed)
-	pm.Handles(pm.handleHandStarted)
-	pm.Handles(pm.handleCardsDealt)
-	pm.Handles(pm.handleBlindPosted)
-	pm.Handles(pm.handleActionTaken)
-	pm.Handles(pm.handleCommunityDealt)
-	pm.Handles(pm.handlePotAwarded)
+	pm.Handles(pm.HandleHandStarted)
+	pm.Handles(pm.HandleCardsDealt)
+	pm.Handles(pm.HandleBlindPosted)
+	pm.Handles(pm.HandleActionTaken)
+	pm.Handles(pm.HandleCommunityCardsDealt)
+	pm.Handles(pm.HandlePotAwarded)
 
 	return pm
 }
 
-// handleHandStarted processes the HandStarted event.
-func (pm *HandFlowPM) handleHandStarted(
+// HandleHandStarted processes the HandStarted event.
+func (pm *HandFlowPM) HandleHandStarted(
 	trigger *pb.EventBook,
 	state *PMState,
 	event *examples.HandStarted,
@@ -64,8 +64,8 @@ func (pm *HandFlowPM) handleHandStarted(
 	return nil, nil, nil
 }
 
-// handleCardsDealt processes the CardsDealt event.
-func (pm *HandFlowPM) handleCardsDealt(
+// HandleCardsDealt processes the CardsDealt event.
+func (pm *HandFlowPM) HandleCardsDealt(
 	trigger *pb.EventBook,
 	state *PMState,
 	event *examples.CardsDealt,
@@ -77,8 +77,8 @@ func (pm *HandFlowPM) handleCardsDealt(
 	return nil, nil, nil
 }
 
-// handleBlindPosted processes the BlindPosted event.
-func (pm *HandFlowPM) handleBlindPosted(
+// HandleBlindPosted processes the BlindPosted event.
+func (pm *HandFlowPM) HandleBlindPosted(
 	trigger *pb.EventBook,
 	state *PMState,
 	event *examples.BlindPosted,
@@ -89,8 +89,8 @@ func (pm *HandFlowPM) handleBlindPosted(
 	return nil, nil, nil
 }
 
-// handleActionTaken processes the ActionTaken event.
-func (pm *HandFlowPM) handleActionTaken(
+// HandleActionTaken processes the ActionTaken event.
+func (pm *HandFlowPM) HandleActionTaken(
 	trigger *pb.EventBook,
 	state *PMState,
 	event *examples.ActionTaken,
@@ -101,8 +101,8 @@ func (pm *HandFlowPM) handleActionTaken(
 	return nil, nil, nil
 }
 
-// handleCommunityDealt processes the CommunityCardsDealt event.
-func (pm *HandFlowPM) handleCommunityDealt(
+// HandleCommunityCardsDealt processes the CommunityCardsDealt event.
+func (pm *HandFlowPM) HandleCommunityCardsDealt(
 	trigger *pb.EventBook,
 	state *PMState,
 	event *examples.CommunityCardsDealt,
@@ -112,8 +112,8 @@ func (pm *HandFlowPM) handleCommunityDealt(
 	return nil, nil, nil
 }
 
-// handlePotAwarded processes the PotAwarded event.
-func (pm *HandFlowPM) handlePotAwarded(
+// HandlePotAwarded processes the PotAwarded event.
+func (pm *HandFlowPM) HandlePotAwarded(
 	trigger *pb.EventBook,
 	state *PMState,
 	event *examples.PotAwarded,
