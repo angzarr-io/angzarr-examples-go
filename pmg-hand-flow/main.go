@@ -7,7 +7,6 @@
 //
 // This example demonstrates the OO pattern using:
 // - ProcessManagerBase with generic state
-// - Prepares() for destination declaration
 // - Handles() for event processing
 // - Applies() for state reconstruction (optional)
 
@@ -41,7 +40,7 @@ func NewHandFlowPM() *HandFlowPM {
 	pm.Init("pmg-hand-flow", "pmg-hand-flow", []string{"table", "hand"})
 	pm.WithStateFactory(func() *PMState { return &PMState{} })
 
-	// Register event handlers (destinations are now config-driven, no Prepares needed)
+	// Register event handlers
 	pm.Handles(pm.HandleHandStarted)
 	pm.Handles(pm.HandleCardsDealt)
 	pm.Handles(pm.HandleBlindPosted)
