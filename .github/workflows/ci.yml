@@ -35,7 +35,9 @@ jobs:
           submodules: recursive
 
       - name: Configure git safe directory
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        # Wildcard covers nested submodule paths; the workspace-only form
+        # leaves submodule git ops vulnerable to dubious-ownership.
+        run: git config --global --add safe.directory '*'
 
       - name: Build
         run: just -f justfile.container build
@@ -342,7 +344,9 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Configure git safe directory
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        # Wildcard covers nested submodule paths; the workspace-only form
+        # leaves submodule git ops vulnerable to dubious-ownership.
+        run: git config --global --add safe.directory '*'
 
       - name: Generate proto code
         run: buf generate
