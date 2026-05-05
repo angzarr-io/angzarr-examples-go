@@ -83,7 +83,7 @@ func (s *HandTableSaga) Handle(source *pb.EventBook, _ *angzarr.Destinations) (*
 	if source != nil && source.Cover != nil && source.Cover.Root != nil {
 		s.handRoot = source.Cover.Root.Value
 	}
-	return s.SagaBase.Handle(source)
+	return s.SagaBase.Handle(source, nil)
 }
 
 func main() {

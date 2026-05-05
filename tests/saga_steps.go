@@ -401,7 +401,7 @@ func handleHandResultsSaga() error {
 
 		for playerKey := range he.StackChanges {
 			cmd := &examples.ReleaseFunds{
-				TableRoot: he.HandRoot,
+				Key: he.HandRoot,
 			}
 			cmdAny, _ := anypb.New(cmd)
 

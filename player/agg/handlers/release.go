@@ -20,11 +20,11 @@ func releaseFundsGuard(state PlayerState) error {
 }
 
 func releaseFundsValidate(cmd *examples.ReleaseFunds, state PlayerState) (int64, error) {
-	if len(cmd.TableRoot) == 0 {
+	if len(cmd.Key) == 0 {
 		return 0, angzarr.NewCommandRejectedError("table_root is required")
 	}
 
-	tableKey := hex.EncodeToString(cmd.TableRoot)
+	tableKey := hex.EncodeToString(cmd.Key)
 	reserved, ok := state.TableReservations[tableKey]
 	if !ok {
 		return 0, angzarr.NewCommandRejectedError("No funds reserved for this table")
@@ -38,7 +38,7 @@ func releaseFundsCompute(cmd *examples.ReleaseFunds, state PlayerState, reserved
 	newAvailable := state.Bankroll - newReserved
 	return &examples.FundsReleased{
 		Amount:              &examples.Currency{Amount: reserved, CurrencyCode: "CHIPS"},
-		TableRoot:           cmd.TableRoot,
+		Key:                 cmd.Key,
 		NewAvailableBalance: &examples.Currency{Amount: newAvailable, CurrencyCode: "CHIPS"},
 		NewReservedBalance:  &examples.Currency{Amount: newReserved, CurrencyCode: "CHIPS"},
 		ReleasedAt:          timestamppb.New(time.Now()),

@@ -38,7 +38,7 @@ func HandleTableJoinRejected(notification *pb.Notification, state PlayerState) *
 
 	event := &examples.FundsReleased{
 		Amount:              &examples.Currency{Amount: reservedAmount, CurrencyCode: "CHIPS"},
-		TableRoot:           tableRoot,
+		Key:           tableRoot,
 		NewAvailableBalance: &examples.Currency{Amount: newAvailable, CurrencyCode: "CHIPS"},
 		NewReservedBalance:  &examples.Currency{Amount: newReserved, CurrencyCode: "CHIPS"},
 		ReleasedAt:          timestamppb.Now(),

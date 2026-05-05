@@ -91,8 +91,8 @@ func applyReserved(state *PlayerState, event *examples.FundsReserved) {
 	if event.NewReservedBalance != nil {
 		state.ReservedFunds = event.NewReservedBalance.Amount
 	}
-	if event.TableRoot != nil && event.Amount != nil {
-		tableKey := hex.EncodeToString(event.TableRoot)
+	if event.Key != nil && event.Amount != nil {
+		tableKey := hex.EncodeToString(event.Key)
 		state.TableReservations[tableKey] = event.Amount.Amount
 	}
 }
@@ -101,8 +101,8 @@ func applyReleased(state *PlayerState, event *examples.FundsReleased) {
 	if event.NewReservedBalance != nil {
 		state.ReservedFunds = event.NewReservedBalance.Amount
 	}
-	if event.TableRoot != nil {
-		tableKey := hex.EncodeToString(event.TableRoot)
+	if event.Key != nil {
+		tableKey := hex.EncodeToString(event.Key)
 		delete(state.TableReservations, tableKey)
 	}
 }

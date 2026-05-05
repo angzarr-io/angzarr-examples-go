@@ -158,7 +158,7 @@ func (pc *PlayerContext) fundsReservedForTable(amount int, tableID string) error
 	newAvailable := pc.state.Bankroll - newReserved
 	event := &examples.FundsReserved{
 		Amount:              &examples.Currency{Amount: int64(amount), CurrencyCode: "CHIPS"},
-		TableRoot:           []byte(tableID),
+		Key:           []byte(tableID),
 		NewAvailableBalance: &examples.Currency{Amount: newAvailable, CurrencyCode: "CHIPS"},
 		NewReservedBalance:  &examples.Currency{Amount: newReserved, CurrencyCode: "CHIPS"},
 		ReservedAt:          timestamppb.Now(),
@@ -265,7 +265,7 @@ func (pc *PlayerContext) handleWithdrawFunds(amount int) error {
 func (pc *PlayerContext) handleReserveFunds(amount int, tableID string) error {
 	cmd := &examples.ReserveFunds{
 		Amount:    &examples.Currency{Amount: int64(amount), CurrencyCode: "CHIPS"},
-		TableRoot: []byte(tableID),
+		Key: []byte(tableID),
 	}
 	cmdAny, err := anypb.New(cmd)
 	if err != nil {
@@ -286,7 +286,7 @@ func (pc *PlayerContext) handleReserveFunds(amount int, tableID string) error {
 
 func (pc *PlayerContext) handleReleaseFunds(tableID string) error {
 	cmd := &examples.ReleaseFunds{
-		TableRoot: []byte(tableID),
+		Key: []byte(tableID),
 	}
 	cmdAny, err := anypb.New(cmd)
 	if err != nil {

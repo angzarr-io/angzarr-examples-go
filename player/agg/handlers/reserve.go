@@ -35,7 +35,7 @@ func reserveFundsValidate(cmd *examples.ReserveFunds, state PlayerState) (int64,
 		return 0, angzarr.NewCommandRejectedError("Insufficient funds")
 	}
 
-	tableKey := hex.EncodeToString(cmd.TableRoot)
+	tableKey := hex.EncodeToString(cmd.Key)
 	if _, exists := state.TableReservations[tableKey]; exists {
 		return 0, angzarr.NewCommandRejectedError("Funds already reserved for this table")
 	}
@@ -48,7 +48,7 @@ func reserveFundsCompute(cmd *examples.ReserveFunds, state PlayerState, amount i
 	newAvailable := state.Bankroll - newReserved
 	return &examples.FundsReserved{
 		Amount:              cmd.Amount,
-		TableRoot:           cmd.TableRoot,
+		Key:           cmd.Key,
 		NewAvailableBalance: &examples.Currency{Amount: newAvailable, CurrencyCode: "CHIPS"},
 		NewReservedBalance:  &examples.Currency{Amount: newReserved, CurrencyCode: "CHIPS"},
 		ReservedAt:          timestamppb.New(time.Now()),

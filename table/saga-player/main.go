@@ -48,7 +48,7 @@ func (s *TablePlayerSaga) HandleHandEnded(
 		}
 
 		releaseFunds := &examples.ReleaseFunds{
-			TableRoot: event.HandRoot,
+			Key: event.HandRoot,
 		}
 
 		cmdAny, err := anypb.New(releaseFunds)
@@ -75,7 +75,7 @@ func (s *TablePlayerSaga) HandleHandEnded(
 
 // Handle satisfies the OOSaga interface (destinations parameter added in 0.5.0).
 func (s *TablePlayerSaga) Handle(source *pb.EventBook, _ *angzarr.Destinations) (*angzarr.SagaHandlerResponse, error) {
-	return s.SagaBase.Handle(source)
+	return s.SagaBase.Handle(source, nil)
 }
 
 func main() {

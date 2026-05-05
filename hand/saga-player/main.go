@@ -71,7 +71,7 @@ func (s *HandPlayerSaga) HandlePotAwarded(
 
 // Handle satisfies the OOSaga interface (destinations parameter added in 0.5.0).
 func (s *HandPlayerSaga) Handle(source *pb.EventBook, _ *angzarr.Destinations) (*angzarr.SagaHandlerResponse, error) {
-	return s.SagaBase.Handle(source)
+	return s.SagaBase.Handle(source, nil)
 }
 
 func main() {
