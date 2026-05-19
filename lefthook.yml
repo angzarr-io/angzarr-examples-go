@@ -1,0 +1,20 @@
+# Lefthook configuration
+# https://github.com/evilmartians/lefthook
+#
+# Setup: lefthook install
+
+post-checkout:
+  commands:
+    install-submodule-hooks:
+      run: just install-submodule-hooks
+
+post-merge:
+  commands:
+    install-submodule-hooks:
+      run: just install-submodule-hooks
+
+pre-commit:
+  parallel: false
+  commands:
+    check-submodules-clean:
+      run: just check-submodules-clean
