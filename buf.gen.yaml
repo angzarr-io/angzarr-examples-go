@@ -1,6 +1,9 @@
 version: v2
+# Input resolved against the workspace `buf.yaml` (single module:
+# angzarr-project/proto, which now includes sererr at proto/sererr/v1/sererr.proto
+# since PR #11).
 inputs:
-  - directory: angzarr-project/proto  # Core and example protos from submodule
+  - directory: angzarr-project/proto
     exclude_paths:
       - angzarr-project/proto/examples/ai_sidecar.proto
 plugins:
