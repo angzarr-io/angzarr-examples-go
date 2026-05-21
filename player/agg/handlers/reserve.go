@@ -8,8 +8,8 @@ import (
 	"time"
 
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/angzarr/v1"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -48,7 +48,7 @@ func reserveFundsCompute(cmd *examples.ReserveFunds, state PlayerState, amount i
 	newAvailable := state.Bankroll - newReserved
 	return &examples.FundsReserved{
 		Amount:              cmd.Amount,
-		Key:           cmd.Key,
+		Key:                 cmd.Key,
 		NewAvailableBalance: &examples.Currency{Amount: newAvailable, CurrencyCode: "CHIPS"},
 		NewReservedBalance:  &examples.Currency{Amount: newReserved, CurrencyCode: "CHIPS"},
 		ReservedAt:          timestamppb.New(time.Now()),

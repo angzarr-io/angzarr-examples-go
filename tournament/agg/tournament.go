@@ -10,8 +10,8 @@ import (
 	"time"
 
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/angzarr/v1"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -31,6 +31,21 @@ type TournamentState struct {
 	RegisteredPlayers map[string]*examples.PlayerRegistration // player_root_hex -> registration
 	PlayersRemaining  int32
 	TotalPrizePool    int64
+	// Hand-for-hand bookkeeping (Phase I-Go: HIGH-EX-2.4.2 advanced handlers).
+	HandForHand      bool
+	HandForHandRound int32
+	// Active penalties (player_root_hex -> rounds_remaining).
+	ActivePenalties map[string]int32
+	// No-show + disqualified players tracked separately.
+	NoShowPlayers       map[string]bool
+	DisqualifiedPlayers map[string]bool
+	// Operational halts and day-end snapshots.
+	NewHandsHalted bool
+	BagSnapshots   []*examples.PlayerBagSnapshot
+	// Mixed-game variant cursor (HORSE rotation).
+	MixedGameIndex int32
+	// Bounty payouts per eliminator (eliminator_root_hex -> total_amount).
+	BountyTotals map[string]int64
 }
 
 // Tournament command handler with event sourcing using OO pattern.
@@ -43,12 +58,16 @@ func NewTournament(eventBook *pb.EventBook) *Tournament {
 	t := &Tournament{}
 	t.Init(eventBook, func() TournamentState {
 		return TournamentState{
-			RegisteredPlayers: make(map[string]*examples.PlayerRegistration),
+			RegisteredPlayers:   make(map[string]*examples.PlayerRegistration),
+			ActivePenalties:     make(map[string]int32),
+			NoShowPlayers:       make(map[string]bool),
+			DisqualifiedPlayers: make(map[string]bool),
+			BountyTotals:        make(map[string]int64),
 		}
 	})
 	t.SetDomain("tournament")
 
-	// Register event appliers
+	// Register event appliers (existing)
 	t.Applies(t.applyCreated)
 	t.Applies(t.applyRegistrationOpened)
 	t.Applies(t.applyRegistrationClosed)
@@ -62,8 +81,22 @@ func NewTournament(eventBook *pb.EventBook) *Tournament {
 	t.Applies(t.applyPaused)
 	t.Applies(t.applyResumed)
 	t.Applies(t.applyCompleted)
+	// Advanced appliers (Phase I-Go).
+	t.Applies(t.applyHandForHandStarted)
+	t.Applies(t.applyHandForHandRoundComplete)
+	t.Applies(t.applyHandForHandEnded)
+	t.Applies(t.applyColorUpCompleted)
+	t.Applies(t.applyPenaltyIssued)
+	t.Applies(t.applyPenaltyRoundsDecremented)
+	t.Applies(t.applyPlayerDisqualified)
+	t.Applies(t.applyBountyAwarded)
+	t.Applies(t.applyNoShowDetected)
+	t.Applies(t.applyNewHandsHalted)
+	t.Applies(t.applyBagAndTagComplete)
+	t.Applies(t.applyMixedGameVariantRotated)
+	t.Applies(t.applyPlayerReEntered)
 
-	// Register command handlers
+	// Register command handlers (existing)
 	t.Handles(t.HandleCreateTournament)
 	t.Handles(t.HandleOpenRegistration)
 	t.Handles(t.HandleCloseRegistration)
@@ -73,6 +106,28 @@ func NewTournament(eventBook *pb.EventBook) *Tournament {
 	t.Handles(t.HandleEliminatePlayer)
 	t.Handles(t.HandlePauseTournament)
 	t.Handles(t.HandleResumeTournament)
+	// Advanced handlers (Phase I-Go: 21 new handlers).
+	t.Handles(t.HandleStartTournament)
+	t.Handles(t.HandleCompleteTournament)
+	t.Handles(t.HandleEnterHandForHand)
+	t.Handles(t.HandleRecordTableHandComplete)
+	t.Handles(t.HandleRecordHandForHandRoundComplete)
+	t.Handles(t.HandleRecordHandForHandHand)
+	t.Handles(t.HandleColorUp)
+	t.Handles(t.HandleRebalanceTables)
+	t.Handles(t.HandleRecordSimultaneousBusts)
+	t.Handles(t.HandleTriggerSeatRedraw)
+	t.Handles(t.HandleReseatAbsentPlayer)
+	t.Handles(t.HandleReEntryPlayer)
+	t.Handles(t.HandleAdvanceAbsentBlind)
+	t.Handles(t.HandleRotateMixedGameVariant)
+	t.Handles(t.HandleStopNewHands)
+	t.Handles(t.HandleBagAndTag)
+	t.Handles(t.HandleIssuePenalty)
+	t.Handles(t.HandleDecrementPenalty)
+	t.Handles(t.HandleDisqualifyPlayer)
+	t.Handles(t.HandleAwardBounty)
+	t.Handles(t.HandleDetectNoShow)
 
 	return t
 }

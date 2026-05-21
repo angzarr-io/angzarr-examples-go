@@ -13,8 +13,8 @@ import (
 	"time"
 
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/angzarr"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples"
 )
 
 var logFile *os.File

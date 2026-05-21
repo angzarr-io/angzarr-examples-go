@@ -28,7 +28,7 @@ package main
 
 import (
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/angzarr/v1"
 )
 
 // docs:start:upcaster_router

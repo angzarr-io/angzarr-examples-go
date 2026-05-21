@@ -8,12 +8,25 @@
 */*/saga-*
 */*/pmg-*
 */*/prj-*
+# Root-level service binaries built by `just build` / `go build .`. Each cmd
+# package emits an executable here; never commit them.
+/agg
+/upc
+/saga-*
+/pmg-*
+/prj-*
 
 # Test binary
 *.test
 
 # Output
 *.out
+
+# Go build cache (set via GOCACHE=.gocache when running outside the container)
+.gocache/
+
+# Pending-scenario tracking file emitted by `tests/...` runs
+.pending_hand.txt
 
 # Dependency directories
 vendor/
@@ -37,3 +50,8 @@ Thumbs.db
 
 # Kubernetes
 *.kubeconfig
+
+# Mutation testing
+.mutants-cache/
+mutation-results/
+mutants-reports/

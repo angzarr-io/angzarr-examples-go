@@ -3,7 +3,7 @@ package handlers
 import (
 	"testing"
 
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -45,29 +45,40 @@ func TestAdvanceBlindLevel_IncrementsLevel(t *testing.T) {
 	assert.Equal(t, int64(100), event.BigBlind)
 }
 
-func TestAdvanceBlindLevel_CapsAtLastLevel(t *testing.T) {
-	state := TournamentState{
-		Name:         "Test",
-		Status:       examples.TournamentStatus_TOURNAMENT_RUNNING,
-		CurrentLevel: 3,
-		BlindStructure: []*examples.BlindLevel{
-			{Level: 1, SmallBlind: 25, BigBlind: 50},
-			{Level: 2, SmallBlind: 50, BigBlind: 100},
-			{Level: 3, SmallBlind: 100, BigBlind: 200},
-		},
+func TestAdvanceBlindLevel_RejectsBlindStructureExhausted(t *testing.T) {
+	// EU-0855: when current_level is at the final defined level, the
+	// next advance must reject so the operator decides explicitly
+	// (extend the structure or end the tournament).
+	state := NewTournamentState()
+	state.Name = "Test"
+	state.Status = examples.TournamentStatus_TOURNAMENT_RUNNING
+	state.CurrentLevel = 3
+	state.BlindStructure = []*examples.BlindLevel{
+		{Level: 1, SmallBlind: 25, BigBlind: 50},
+		{Level: 2, SmallBlind: 50, BigBlind: 100},
+		{Level: 3, SmallBlind: 100, BigBlind: 200},
 	}
 	cmd := &examples.AdvanceBlindLevel{}
 	cmdAny, _ := anypb.New(cmd)
 
-	result, err := HandleAdvanceBlindLevel(makeCommandBook(), cmdAny, state, 0)
+	_, err := HandleAdvanceBlindLevel(makeCommandBook(), cmdAny, state, 0)
 
-	require.NoError(t, err)
-	var event examples.BlindLevelAdvanced
-	_ = proto.Unmarshal(result.Pages[0].GetEvent().Value, &event)
-	assert.Equal(t, int32(4), event.Level)
-	// Should use last level values since we exceeded the structure
-	assert.Equal(t, int64(100), event.SmallBlind)
-	assert.Equal(t, int64(200), event.BigBlind)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exhausted")
+}
+
+func TestAdvanceBlindLevel_RejectsWhenStructureEmpty(t *testing.T) {
+	state := NewTournamentState()
+	state.Name = "Test"
+	state.Status = examples.TournamentStatus_TOURNAMENT_RUNNING
+	state.CurrentLevel = 0
+	cmd := &examples.AdvanceBlindLevel{}
+	cmdAny, _ := anypb.New(cmd)
+
+	_, err := HandleAdvanceBlindLevel(makeCommandBook(), cmdAny, state, 0)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exhausted")
 }
 
 func TestEliminatePlayer_RejectsNotRunning(t *testing.T) {

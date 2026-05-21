@@ -3,8 +3,8 @@ package main
 import (
 	"testing"
 
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/angzarr/v1"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"

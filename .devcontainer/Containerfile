@@ -4,5 +4,20 @@
 ARG GO_IMAGE=ghcr.io/angzarr-io/angzarr-go:latest
 FROM ${GO_IMAGE}
 
+# INFRA-1: see Rust devcontainer comment. Applies system-wide so the
+# `_container` entry's `git rev-parse --show-toplevel` succeeds against
+# the bind-mounted /workspace under rootless docker.
+USER root
+RUN git config --system --add safe.directory '*' \
+ && git config --system --add safe.directory '/workspace' \
+ && git config --system --add safe.directory '/angzarr'
+
 # Mark as devcontainer for justfile detection
 ENV DEVCONTAINER=true
+
+# Mutation tooling: gremlins for the cross-language `just mutate` recipe
+# (.plan/mutation-container-isolation.md). The base ghcr.io/angzarr-io/angzarr-go
+# image does NOT include it, so we install it here for image-level reproducibility.
+ARG GREMLINS_VERSION=v0.5.0
+RUN go install github.com/go-gremlins/gremlins/cmd/gremlins@${GREMLINS_VERSION} \
+ && ln -sf $(go env GOPATH)/bin/gremlins /usr/local/bin/gremlins

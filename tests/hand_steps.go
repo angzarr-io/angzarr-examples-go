@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/angzarr/v1"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"github.com/benjaminabbitt/angzarr/examples/go/hand/agg/handlers"
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
@@ -46,9 +46,15 @@ func newHandContext() *HandContext {
 	}
 }
 
+// handCtxRef is a module-level pointer so cross-module fallback helpers
+// (e.g. game_rules_steps.go's `each player has N hole cards` shim) can
+// reach the active hand context without importing the receiver.
+var handCtxRef *HandContext
+
 // InitHandSteps registers hand aggregate step definitions
 func InitHandSteps(ctx *godog.ScenarioContext) {
 	hc := newHandContext()
+	handCtxRef = hc
 
 	// Reset before each scenario
 	ctx.Before(func(ctx context.Context, sc *godog.Scenario) (context.Context, error) {
@@ -58,6 +64,7 @@ func InitHandSteps(ctx *godog.ScenarioContext) {
 		hc.resultEvents = nil
 		hc.lastError = nil
 		hc.playerRoots = make(map[string][]byte)
+		handCtxRef = hc
 		return ctx, nil
 	})
 
@@ -67,6 +74,14 @@ func InitHandSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^a CardsDealt event for TEXAS_HOLDEM with (\d+) players$`, hc.cardsDealtTexasHoldem)
 	ctx.Step(`^a CardsDealt event for TEXAS_HOLDEM with (\d+) players at stacks (\d+)$`, hc.cardsDealtTexasHoldemWithStacks)
 	ctx.Step(`^a CardsDealt event for TEXAS_HOLDEM with players:$`, hc.cardsDealtTexasHoldemWithTable)
+	// Name-list variant: "with N players \"Alice,Bob\" at stacks S". Used by
+	// 44+ hand.feature scenarios that need named-player references in
+	// subsequent steps. Re-registers the player_root → name mapping so
+	// `PlayerAction command for player "Alice"` resolves to the right
+	// PlayerInHand.
+	ctx.Step(`^a CardsDealt event for TEXAS_HOLDEM with (\d+) players "([^"]*)" at stacks (\d+)$`, hc.cardsDealtTexasHoldemWithNamedPlayers)
+	ctx.Step(`^a CardsDealt event for OMAHA with (\d+) players "([^"]*)" at stacks (\d+)$`, hc.cardsDealtOmahaWithNamedPlayers)
+	ctx.Step(`^a CardsDealt event for limit Texas Hold'em with (\d+) players "([^"]*)" at stacks (\d+)$`, hc.cardsDealtLimitTexasHoldemWithNamedPlayers)
 	ctx.Step(`^a CardsDealt event for OMAHA with (\d+) players$`, hc.cardsDealtOmaha)
 	ctx.Step(`^a CardsDealt event for FIVE_CARD_DRAW with (\d+) players$`, hc.cardsDealtFiveCardDraw)
 	ctx.Step(`^blinds posted with pot (\d+)$`, hc.blindsPostedWithPot)
@@ -102,15 +117,24 @@ func InitHandSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^hands are evaluated$`, hc.handsEvaluated)
 	ctx.Step(`^I rebuild the hand state$`, hc.rebuildHandState)
 
-	// Then steps
-	ctx.Step(`^the result is a (?:examples\.)?CardsDealt event$`, hc.resultIsCardsDealt)
-	ctx.Step(`^the result is a (?:examples\.)?BlindPosted event$`, hc.resultIsBlindPosted)
-	ctx.Step(`^the result is an? (?:examples\.)?ActionTaken event$`, hc.resultIsActionTaken)
-	ctx.Step(`^the result is a (?:examples\.)?CommunityCardsDealt event$`, hc.resultIsCommunityCardsDealt)
-	ctx.Step(`^the result is a (?:examples\.)?DrawCompleted event$`, hc.resultIsDrawCompleted)
-	ctx.Step(`^the result is a (?:examples\.)?CardsRevealed event$`, hc.resultIsCardsRevealed)
-	ctx.Step(`^the result is a (?:examples\.)?CardsMucked event$`, hc.resultIsCardsMucked)
-	ctx.Step(`^the result is a (?:examples\.)?PotAwarded event$`, hc.resultIsPotAwarded)
+	// Then steps. Each result-type assertion accepts:
+	//   - bare name                    → "CardsDealt event"
+	//   - `examples.` prefix           → "examples.CardsDealt event"
+	//   - fully-qualified proto path   → "angzarr_client.proto.examples.v1.CardsDealt event"
+	// The grammar variants are common across the feature suite; one regex
+	// avoids 3x duplicate registrations per event type.
+	const rPfx = `^the result is an? (?:examples\.|angzarr_client\.proto\.examples\.)?`
+	ctx.Step(rPfx+`CardsDealt event$`, hc.resultIsCardsDealt)
+	ctx.Step(rPfx+`BlindPosted event$`, hc.resultIsBlindPosted)
+	ctx.Step(rPfx+`ActionTaken event$`, hc.resultIsActionTaken)
+	ctx.Step(rPfx+`CommunityCardsDealt event$`, hc.resultIsCommunityCardsDealt)
+	ctx.Step(rPfx+`DrawCompleted event$`, hc.resultIsDrawCompleted)
+	ctx.Step(rPfx+`CardsRevealed event$`, hc.resultIsCardsRevealed)
+	ctx.Step(rPfx+`CardsMucked event$`, hc.resultIsCardsMucked)
+	ctx.Step(rPfx+`PotAwarded event$`, hc.resultIsPotAwarded)
+	ctx.Step(rPfx+`BettingRoundComplete event$`, hc.resultIsBettingRoundComplete)
+	ctx.Step(rPfx+`HandComplete event$`, hc.resultIsHandComplete)
+	ctx.Step(rPfx+`ShowdownStarted event$`, hc.resultIsShowdownStarted)
 	ctx.Step(`^a HandComplete event is emitted$`, hc.handCompleteEmitted)
 	ctx.Step(`^each player has (\d+) hole cards$`, hc.eachPlayerHasHoleCards)
 	ctx.Step(`^the remaining deck has (\d+) cards$`, hc.remainingDeckHasCards)
@@ -146,6 +170,13 @@ func InitHandSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^active player count is (\d+)$`, hc.activePlayerCountIs)
 	ctx.Step(`^the command fails with "([^"]*)"$`, hc.commandFailsWith)
 	// Note: "command fails with status" is registered in common_steps.go
+
+	// Wire the extension bindings (hand_steps_ext.go) into the hand-context
+	// scenario lifecycle. RegisterHandStepsExt adds fully-qualified-name
+	// event aliases and state-inspection helpers that mirror the post-9de86c5c
+	// scenario surface. Without this call, the bindings exist but are not
+	// registered, so godog falls back to the pending_steps.go stubs.
+	RegisterHandStepsExt(ctx, hc)
 }
 
 // Helper functions
@@ -273,6 +304,83 @@ func (hc *HandContext) cardsDealtTexasHoldemWithTable(table *godog.Table) error 
 
 func (hc *HandContext) cardsDealtOmaha(playerCount int) error {
 	return hc.createCardsDealtEvent(examples.GameVariant_OMAHA, playerCount, 1000, 1)
+}
+
+// cardsDealtTexasHoldemWithNamedPlayers seeds a CardsDealt event with
+// explicit player names so subsequent steps that reference player by
+// name (e.g. `PlayerAction command for player "Alice"`) can resolve to
+// the same player_root the dealt event used.
+//
+// The names string is comma-separated (e.g. "Alice,Bob"). Each name
+// gets a deterministic player_root via getOrCreatePlayerRoot and is
+// assigned to position 0..N-1 with the given stack.
+func (hc *HandContext) cardsDealtTexasHoldemWithNamedPlayers(playerCount int, names string, stack int) error {
+	return hc.createNamedCardsDealtEvent(examples.GameVariant_TEXAS_HOLDEM, playerCount, names, int64(stack))
+}
+
+func (hc *HandContext) cardsDealtOmahaWithNamedPlayers(playerCount int, names string, stack int) error {
+	return hc.createNamedCardsDealtEvent(examples.GameVariant_OMAHA, playerCount, names, int64(stack))
+}
+
+func (hc *HandContext) cardsDealtLimitTexasHoldemWithNamedPlayers(playerCount int, names string, stack int) error {
+	// Limit-vs-NL is a forced-bet/raise-tracking distinction, not a
+	// shape distinction on CardsDealt — game_variant is still
+	// TEXAS_HOLDEM. The scenarios using this Given exercise pot-limit /
+	// fixed-limit raise tracking downstream.
+	return hc.createNamedCardsDealtEvent(examples.GameVariant_TEXAS_HOLDEM, playerCount, names, int64(stack))
+}
+
+func (hc *HandContext) createNamedCardsDealtEvent(variant examples.GameVariant, playerCount int, names string, stack int64) error {
+	cardsPerPlayer := 2
+	if variant == examples.GameVariant_OMAHA {
+		cardsPerPlayer = 4
+	} else if variant == examples.GameVariant_FIVE_CARD_DRAW {
+		cardsPerPlayer = 5
+	}
+
+	nameList := strings.Split(names, ",")
+	if len(nameList) != playerCount {
+		// Pad or truncate to the declared count. Defensive — feature
+		// text and arity should agree, but if they ever drift the
+		// declared playerCount wins.
+		for len(nameList) < playerCount {
+			nameList = append(nameList, fmt.Sprintf("player_%d", len(nameList)))
+		}
+		nameList = nameList[:playerCount]
+	}
+
+	players := make([]*examples.PlayerInHand, playerCount)
+	playerCards := make([]*examples.PlayerHoleCards, playerCount)
+	for i, raw := range nameList {
+		name := strings.TrimSpace(raw)
+		root := hc.getOrCreatePlayerRoot(name)
+		players[i] = &examples.PlayerInHand{
+			PlayerRoot: root,
+			Position:   int32(i),
+			Stack:      stack,
+		}
+		playerCards[i] = &examples.PlayerHoleCards{
+			PlayerRoot: root,
+			Cards:      createHoleCards(cardsPerPlayer),
+		}
+	}
+
+	event := &examples.CardsDealt{
+		TableRoot:      []byte("table_1"),
+		HandNumber:     1,
+		GameVariant:    variant,
+		PlayerCards:    playerCards,
+		DealerPosition: 0,
+		Players:        players,
+		RemainingDeck:  createRemainingDeck(52 - playerCount*cardsPerPlayer),
+		DealtAt:        timestamppb.Now(),
+	}
+	eventAny, err := anypb.New(event)
+	if err != nil {
+		return err
+	}
+	hc.addEvent(eventAny)
+	return nil
 }
 
 func (hc *HandContext) cardsDealtFiveCardDraw(playerCount int) error {
@@ -438,7 +546,10 @@ func (hc *HandContext) flopAndTurnDealt() error {
 
 func (hc *HandContext) completedBettingTexasHoldem(playerCount int) error {
 	_ = hc.cardsDealtTexasHoldem(playerCount)
-	_ = hc.blindsPostedWithPot(30)
+	// pot=15 mirrors Py `unit_steps/hand_steps.py` step_given_completed_betting
+	// (SB 5 + BB 10 = 15). Using 30 caused the under-award adjustment in
+	// AwardPot to inflate single-winner amounts (EU-0027).
+	_ = hc.blindsPostedWithPot(15)
 	return nil
 }
 
@@ -676,9 +787,16 @@ func (hc *HandContext) handleDealCards(variant examples.GameVariant, table *godo
 
 func (hc *HandContext) handlePostBlind(playerName, blindType string, amount int) error {
 	playerRoot := hc.getOrCreatePlayerRoot(playerName)
-	bt := "small"
-	if blindType == "BIG_BLIND" || blindType == "big" {
+	// Pass through canonical blind types verbatim; only legacy aliases
+	// ("BIG_BLIND" / "SMALL_BLIND") need normalisation.
+	bt := blindType
+	switch blindType {
+	case "BIG_BLIND":
 		bt = "big"
+	case "SMALL_BLIND":
+		bt = "small"
+	case "ANTE":
+		bt = "ante"
 	}
 
 	cmd := &examples.PostBlind{
@@ -950,6 +1068,53 @@ func (hc *HandContext) handCompleteEmitted() error {
 	}
 	if !hc.resultEvents[1].MessageIs(&examples.HandComplete{}) {
 		return fmt.Errorf("expected HandComplete event, got %s", hc.resultEvents[1].TypeUrl)
+	}
+	return nil
+}
+
+func (hc *HandContext) resultIsBettingRoundComplete() error {
+	if hc.lastError != nil {
+		return fmt.Errorf("expected success but got error: %v", hc.lastError)
+	}
+	if hc.resultEvent == nil {
+		return fmt.Errorf("no result event")
+	}
+	if !hc.resultEvent.MessageIs(&examples.BettingRoundComplete{}) {
+		return fmt.Errorf("expected BettingRoundComplete event, got %s", hc.resultEvent.TypeUrl)
+	}
+	return nil
+}
+
+func (hc *HandContext) resultIsHandComplete() error {
+	if hc.lastError != nil {
+		return fmt.Errorf("expected success but got error: %v", hc.lastError)
+	}
+	// HandComplete is often the SECOND result event (after PotAwarded);
+	// check both resultEvent and resultEvents[1] for compatibility with
+	// multi-event handlers like AwardPot.
+	if hc.resultEvent != nil && hc.resultEvent.MessageIs(&examples.HandComplete{}) {
+		return nil
+	}
+	for _, ev := range hc.resultEvents {
+		if ev.MessageIs(&examples.HandComplete{}) {
+			return nil
+		}
+	}
+	if hc.resultEvent != nil {
+		return fmt.Errorf("expected HandComplete event, got %s", hc.resultEvent.TypeUrl)
+	}
+	return fmt.Errorf("no result event")
+}
+
+func (hc *HandContext) resultIsShowdownStarted() error {
+	if hc.lastError != nil {
+		return fmt.Errorf("expected success but got error: %v", hc.lastError)
+	}
+	if hc.resultEvent == nil {
+		return fmt.Errorf("no result event")
+	}
+	if !hc.resultEvent.MessageIs(&examples.ShowdownStarted{}) {
+		return fmt.Errorf("expected ShowdownStarted event, got %s", hc.resultEvent.TypeUrl)
 	}
 	return nil
 }

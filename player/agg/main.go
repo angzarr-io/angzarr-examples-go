@@ -18,6 +18,7 @@ func main() {
 		On("examples.ReserveFunds", handlers.HandleReserveFunds).
 		On("examples.ReleaseFunds", handlers.HandleReleaseFunds).
 		On("examples.TransferFunds", handlers.HandleTransferFunds).
+		On("examples.DeductReservedFunds", handlers.HandleDeductReservedFunds). // Phase I-Go: MED-EX-2.1.1
 		OnRejected("table", "examples.JoinTable", handlers.HandleTableJoinRejected)
 
 	angzarr.RunCommandHandlerServer("player", "50201", router)

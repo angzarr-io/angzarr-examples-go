@@ -13,8 +13,8 @@ import (
 	"time"
 
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/angzarr/v1"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -34,6 +34,12 @@ type TableState struct {
 	HandCount            int64
 	CurrentHandRoot      []byte
 	Status               string // "waiting", "in_hand", "paused"
+	// Phase I-Go-v2a HIGH-EX-2.2.3 — tournament hand-for-hand sync.
+	// HandForHandStatus values: "" (not in H4H), "WAITING" (Enter received),
+	// "COMPLETE" (MarkComplete received). HandForHandTournamentRoot is
+	// captured on Enter and cleared on End.
+	HandForHandStatus         string
+	HandForHandTournamentRoot []byte
 }
 
 // SeatState represents a player seat at the table.
@@ -67,6 +73,9 @@ func NewTable(eventBook *pb.EventBook) *Table {
 	t.Applies(t.applyHandStarted)
 	t.Applies(t.applyHandEnded)
 	t.Applies(t.applyChipsAdded)
+	t.Applies(t.applyTableHandForHandWaiting)
+	t.Applies(t.applyTableHandForHandRoundComplete)
+	t.Applies(t.applyTableHandForHandEnded)
 
 	// Register command handlers
 	t.Handles(t.HandleCreateTable)
@@ -75,6 +84,9 @@ func NewTable(eventBook *pb.EventBook) *Table {
 	t.Handles(t.HandleStartHand)
 	t.Handles(t.HandleEndHand)
 	t.Handles(t.HandleAddChips)
+	t.Handles(t.HandleEnterTableHandForHand)
+	t.Handles(t.HandleMarkTableHandForHandHandComplete)
+	t.Handles(t.HandleEndTableHandForHand)
 
 	return t
 }
@@ -459,6 +471,72 @@ func (t *Table) HandleAddChips(cmd *examples.AddChips) (*examples.ChipsAdded, er
 		NewStack:   newStack,
 		AddedAt:    timestamppb.New(time.Now()),
 	}, nil
+}
+
+// --- Hand-For-Hand handlers (Phase I-Go-v2a HIGH-EX-2.2.3) ---
+//
+// See table/agg/handlers/hand_for_hand.go for the canonical functional form
+// and lifecycle documentation. These OO wrappers mirror the same guards and
+// emit identical events so the production aggregate matches the unit-tested
+// functional surface.
+
+func (t *Table) HandleEnterTableHandForHand(cmd *examples.EnterTableHandForHand) (*examples.TableHandForHandWaiting, error) {
+	state := t.State()
+	if !t.exists() {
+		return nil, angzarr.NewCommandRejectedError("Table does not exist")
+	}
+	if state.HandForHandStatus != "" {
+		return nil, angzarr.NewCommandRejectedError("Table is already in hand-for-hand sync")
+	}
+	if len(cmd.TournamentRoot) == 0 {
+		return nil, angzarr.NewInvalidArgumentError("tournament_root is required")
+	}
+	return &examples.TableHandForHandWaiting{
+		EnteredAt:      timestamppb.New(time.Now()),
+		TournamentRoot: cmd.TournamentRoot,
+	}, nil
+}
+
+func (t *Table) HandleMarkTableHandForHandHandComplete(cmd *examples.MarkTableHandForHandHandComplete) (*examples.TableHandForHandRoundComplete, error) {
+	state := t.State()
+	if !t.exists() {
+		return nil, angzarr.NewCommandRejectedError("Table does not exist")
+	}
+	if state.HandForHandStatus != "WAITING" {
+		return nil, angzarr.NewCommandRejectedError("Table is not waiting in hand-for-hand sync")
+	}
+	return &examples.TableHandForHandRoundComplete{
+		HandRoot:       cmd.HandRoot,
+		CompletedAt:    timestamppb.New(time.Now()),
+		TournamentRoot: state.HandForHandTournamentRoot,
+	}, nil
+}
+
+func (t *Table) HandleEndTableHandForHand(_ *examples.EndTableHandForHand) (*examples.TableHandForHandEnded, error) {
+	state := t.State()
+	if !t.exists() {
+		return nil, angzarr.NewCommandRejectedError("Table does not exist")
+	}
+	if state.HandForHandStatus == "" {
+		return nil, angzarr.NewCommandRejectedError("Table is not in hand-for-hand sync")
+	}
+	return &examples.TableHandForHandEnded{
+		EndedAt: timestamppb.New(time.Now()),
+	}, nil
+}
+
+func (t *Table) applyTableHandForHandWaiting(state *TableState, event *examples.TableHandForHandWaiting) {
+	state.HandForHandStatus = "WAITING"
+	state.HandForHandTournamentRoot = event.TournamentRoot
+}
+
+func (t *Table) applyTableHandForHandRoundComplete(state *TableState, _ *examples.TableHandForHandRoundComplete) {
+	state.HandForHandStatus = "COMPLETE"
+}
+
+func (t *Table) applyTableHandForHandEnded(state *TableState, _ *examples.TableHandForHandEnded) {
+	state.HandForHandStatus = ""
+	state.HandForHandTournamentRoot = nil
 }
 
 func (t *Table) HandleEndHand(cmd *examples.EndHand) (*examples.HandEnded, error) {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"github.com/cucumber/godog"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"

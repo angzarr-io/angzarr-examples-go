@@ -15,8 +15,8 @@ import (
 	"time"
 
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/angzarr/v1"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -85,7 +85,7 @@ func HandlePostBlind(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*anyp
 
 	// Guard
 	if !state.Exists() {
-		return nil, angzarr.NewCommandRejectedError("Hand does not exist")
+		return nil, angzarr.NewCommandRejectedError("Hand not dealt")
 	}
 	if state.IsComplete() {
 		return nil, angzarr.NewCommandRejectedError("Hand already complete")
@@ -95,6 +95,13 @@ func HandlePostBlind(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*anyp
 	player := state.GetPlayerByRoot(cmd.PlayerRoot)
 	if player == nil {
 		return nil, angzarr.NewCommandRejectedError("Player not in hand")
+	}
+	if player.HasFolded {
+		return nil, angzarr.NewCommandRejectedError("Player has folded")
+	}
+	// Ante must come before blinds; reject ante if any blinds have already been posted.
+	if cmd.BlindType == "ante" && (state.PlayerHasPostedBlind() || state.TotalPot() > 0) {
+		return nil, angzarr.NewCommandRejectedError("Cannot post ante after blinds are posted")
 	}
 	if cmd.Amount <= 0 {
 		return nil, angzarr.NewInvalidArgumentError("Amount must be positive")
@@ -130,7 +137,7 @@ func HandlePlayerAction(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*a
 
 	// Guard
 	if !state.Exists() {
-		return nil, angzarr.NewCommandRejectedError("Hand does not exist")
+		return nil, angzarr.NewCommandRejectedError("Hand not dealt")
 	}
 	if state.IsComplete() {
 		return nil, angzarr.NewCommandRejectedError("Hand already complete")
@@ -160,7 +167,7 @@ func HandlePlayerAction(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*a
 
 	case examples.ActionType_CHECK:
 		if amountToCall > 0 {
-			return nil, angzarr.NewInvalidArgumentError("Cannot check, must call or fold")
+			return nil, angzarr.NewCommandRejectedError("Cannot check, must call or fold")
 		}
 
 	case examples.ActionType_CALL:
@@ -174,32 +181,32 @@ func HandlePlayerAction(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*a
 
 	case examples.ActionType_BET:
 		if state.CurrentBet > 0 {
-			return nil, angzarr.NewInvalidArgumentError("Cannot bet, use raise")
+			return nil, angzarr.NewCommandRejectedError("Cannot bet when there is already a bet")
 		}
 		minBet := state.MinRaise
 		if minBet == 0 {
 			minBet = 10
 		}
 		if cmd.Amount < minBet {
-			return nil, angzarr.NewInvalidArgumentError(fmt.Sprintf("Bet must be at least %d", minBet))
+			return nil, angzarr.NewCommandRejectedError(fmt.Sprintf("Bet must be at least %d", minBet))
+		}
+		if cmd.Amount > player.Stack {
+			return nil, angzarr.NewCommandRejectedError("Bet exceeds stack")
 		}
 		actualAmount = cmd.Amount
-		if actualAmount > player.Stack {
-			actualAmount = player.Stack
-		}
 
 	case examples.ActionType_RAISE:
 		if state.CurrentBet <= 0 {
-			return nil, angzarr.NewInvalidArgumentError("Cannot raise, use bet")
+			return nil, angzarr.NewCommandRejectedError("Cannot raise when there is no bet")
 		}
 		totalBet := cmd.Amount
 		raiseAmount := totalBet - state.CurrentBet
 		if raiseAmount < state.MinRaise {
-			return nil, angzarr.NewInvalidArgumentError("Raise below minimum")
+			return nil, angzarr.NewCommandRejectedError(fmt.Sprintf("Raise must be at least %d", state.MinRaise))
 		}
 		actualAmount = totalBet - player.BetThisRound
 		if actualAmount > player.Stack {
-			actualAmount = player.Stack
+			return nil, angzarr.NewCommandRejectedError("Raise exceeds stack")
 		}
 
 	case examples.ActionType_ALL_IN:
@@ -224,10 +231,15 @@ func HandlePlayerAction(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*a
 		action = examples.ActionType_ALL_IN
 	}
 
+	// Emit chips_put_in (actualAmount) for all action types. For BET the
+	// new chips_put_in equals cmd.Amount because BetThisRound is 0; for
+	// RAISE the chips_put_in is the delta from the player's existing
+	// BetThisRound (so a raise-to-30 against a player who already posted
+	// SB=5 emits 25, not 30). amount_to_call below carries the absolute
+	// current_bet so downstream actors compute their owed amount as
+	// amount_to_call - their.bet_this_round. Mirrors Py
+	// hand/agg/handlers/player_action_compute (chips_put_in semantics).
 	amountToEmit := actualAmount
-	if cmd.Action == examples.ActionType_BET || cmd.Action == examples.ActionType_RAISE {
-		amountToEmit = cmd.Amount
-	}
 
 	event := &examples.ActionTaken{
 		PlayerRoot:   cmd.PlayerRoot,
@@ -251,13 +263,13 @@ func HandleDealCommunityCards(_ *pb.EventBook, cmdAny *anypb.Any, state HandStat
 
 	// Guard
 	if !state.Exists() {
-		return nil, angzarr.NewCommandRejectedError("Hand does not exist")
+		return nil, angzarr.NewCommandRejectedError("Hand not dealt")
 	}
 	if state.IsComplete() {
 		return nil, angzarr.NewCommandRejectedError("Hand already complete")
 	}
 	if state.GameVariant == examples.GameVariant_FIVE_CARD_DRAW {
-		return nil, angzarr.NewInvalidArgumentError("Five Card Draw does not use community cards")
+		return nil, angzarr.NewCommandRejectedError("Five Card Draw does not use community cards")
 	}
 
 	// Validate
@@ -275,11 +287,14 @@ func HandleDealCommunityCards(_ *pb.EventBook, cmdAny *anypb.Any, state HandStat
 		newPhase = examples.BettingPhase_RIVER
 		cardsToDeal = 1
 	default:
-		return nil, angzarr.NewInvalidArgumentError("Cannot deal more community cards")
+		return nil, angzarr.NewCommandRejectedError("Cannot deal more community cards")
 	}
 
-	if cmd.Count > 0 && int(cmd.Count) != cardsToDeal {
-		return nil, angzarr.NewCommandRejectedError("Invalid card count for phase")
+	if cmd.Count == 0 {
+		return nil, angzarr.NewCommandRejectedError(fmt.Sprintf("Must deal at least 1 card (expected %d)", cardsToDeal))
+	}
+	if int(cmd.Count) != cardsToDeal {
+		return nil, angzarr.NewCommandRejectedError(fmt.Sprintf("Expected %d cards, got %d", cardsToDeal, cmd.Count))
 	}
 
 	if len(state.RemainingDeck) < cardsToDeal {
@@ -309,13 +324,13 @@ func HandleRequestDraw(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*an
 
 	// Guard
 	if !state.Exists() {
-		return nil, angzarr.NewCommandRejectedError("Hand does not exist")
+		return nil, angzarr.NewCommandRejectedError("Hand not dealt")
 	}
 	if state.IsComplete() {
 		return nil, angzarr.NewCommandRejectedError("Hand already complete")
 	}
 	if state.GameVariant != examples.GameVariant_FIVE_CARD_DRAW {
-		return nil, angzarr.NewInvalidArgumentError("Draw is not supported in this game variant")
+		return nil, angzarr.NewCommandRejectedError("Draw is not supported in this game variant")
 	}
 
 	// Validate
@@ -372,10 +387,13 @@ func HandleRevealCards(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) (*an
 
 	// Guard
 	if !state.Exists() {
-		return nil, angzarr.NewCommandRejectedError("Hand does not exist")
+		return nil, angzarr.NewCommandRejectedError("Hand not dealt")
 	}
 	if state.IsComplete() {
 		return nil, angzarr.NewCommandRejectedError("Hand already complete")
+	}
+	if !state.IsShowdown() {
+		return nil, angzarr.NewCommandRejectedError("Not in showdown")
 	}
 
 	// Validate
@@ -424,7 +442,7 @@ func HandleAwardPot(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) ([]*any
 
 	// Guard
 	if !state.Exists() {
-		return nil, angzarr.NewCommandRejectedError("Hand does not exist")
+		return nil, angzarr.NewCommandRejectedError("Hand not dealt")
 	}
 	if state.IsComplete() {
 		return nil, angzarr.NewCommandRejectedError("Hand already complete")
@@ -448,13 +466,44 @@ func HandleAwardPot(_ *pb.EventBook, cmdAny *anypb.Any, state HandState) ([]*any
 	}
 
 	if totalAwarded > state.TotalPot() {
-		return nil, angzarr.NewCommandRejectedError("Awards exceed pot total")
+		// Cross-language: BoundViolation Details uses "got"/"bound"
+		// (mirrors Py `AwardsExceedPot(got=..., bound=...)` and the
+		// feature assertion `the rejection field "got"/"bound" equals X`).
+		return nil, angzarr.NewPreconditionFailedRejection(
+			"AWARDS_EXCEED_POT",
+			"Awards exceed pot total",
+			map[string]string{
+				"got":   fmt.Sprintf("%d", totalAwarded),
+				"bound": fmt.Sprintf("%d", state.TotalPot()),
+			},
+		)
+	}
+
+	// Under-award adjustment (EU-0087, Py `hand.py` award_pot): when the
+	// sum of awards is strictly less than the pot total, the first
+	// winner's amount absorbs the gap. Over-award is the
+	// AWARDS_EXCEED_POT case above; equality requires no adjustment.
+	adjustedAwards := make([]*examples.PotAward, len(cmd.Awards))
+	for i, a := range cmd.Awards {
+		adjustedAwards[i] = &examples.PotAward{
+			PlayerRoot: a.PlayerRoot,
+			Amount:     a.Amount,
+			PotType:    a.PotType,
+		}
+	}
+	potTotal := state.TotalPot()
+	if totalAwarded != potTotal && potTotal > 0 && len(adjustedAwards) > 0 {
+		othersSum := int64(0)
+		for _, a := range adjustedAwards[1:] {
+			othersSum += a.Amount
+		}
+		adjustedAwards[0].Amount = potTotal - othersSum
 	}
 
 	// Compute - return both events
 	now := time.Now()
-	winners := make([]*examples.PotWinner, len(cmd.Awards))
-	for i, award := range cmd.Awards {
+	winners := make([]*examples.PotWinner, len(adjustedAwards))
+	for i, award := range adjustedAwards {
 		winners[i] = &examples.PotWinner{
 			PlayerRoot: award.PlayerRoot,
 			Amount:     award.Amount,

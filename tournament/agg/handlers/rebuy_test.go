@@ -3,7 +3,7 @@ package handlers
 import (
 	"testing"
 
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -11,23 +11,23 @@ import (
 )
 
 func rebuyState() TournamentState {
-	return TournamentState{
-		Name:         "Rebuy Tournament",
-		Status:       examples.TournamentStatus_TOURNAMENT_RUNNING,
-		BuyIn:        1000,
-		CurrentLevel: 2,
-		RebuyConfig: &examples.RebuyConfig{
-			Enabled:          true,
-			MaxRebuys:        3,
-			RebuyLevelCutoff: 4,
-			RebuyCost:        1000,
-			RebuyChips:       10000,
-		},
-		RegisteredPlayers: map[string]*examples.PlayerRegistration{
-			"010203": {PlayerRoot: []byte{1, 2, 3}, RebuysUsed: 0},
-		},
-		PlayersRemaining: 3,
+	s := NewTournamentState()
+	s.Name = "Rebuy Tournament"
+	s.Status = examples.TournamentStatus_TOURNAMENT_RUNNING
+	s.BuyIn = 1000
+	s.CurrentLevel = 2
+	s.RebuyConfig = &examples.RebuyConfig{
+		Enabled:          true,
+		MaxRebuys:        3,
+		RebuyLevelCutoff: 4,
+		RebuyCost:        1000,
+		RebuyChips:       10000,
 	}
+	s.RegisteredPlayers = map[string]*examples.PlayerRegistration{
+		"010203": {PlayerRoot: []byte{1, 2, 3}, RebuysUsed: 0},
+	}
+	s.PlayersRemaining = 3
+	return s
 }
 
 func TestProcessRebuy_RejectsNonExistent(t *testing.T) {
@@ -52,15 +52,17 @@ func TestProcessRebuy_RejectsNotRunning(t *testing.T) {
 	assert.Contains(t, err.Error(), "not running")
 }
 
-func TestProcessRebuy_RejectsUnregistered(t *testing.T) {
+func TestProcessRebuy_DeniesUnregistered(t *testing.T) {
 	state := rebuyState()
 	cmd := &examples.ProcessRebuy{PlayerRoot: []byte{9, 9, 9}} // Different player
 	cmdAny, _ := anypb.New(cmd)
 
-	_, err := HandleProcessRebuy(makeCommandBook(), cmdAny, state, 0)
+	result, err := HandleProcessRebuy(makeCommandBook(), cmdAny, state, 0)
 
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "not registered")
+	require.NoError(t, err) // EU-0818: unregistered -> RebuyDenied (event)
+	var denied examples.RebuyDenied
+	_ = proto.Unmarshal(result.Pages[0].GetEvent().Value, &denied)
+	assert.Contains(t, denied.Reason, "not registered")
 }
 
 func TestProcessRebuy_DeniesWindowClosed(t *testing.T) {
@@ -74,7 +76,7 @@ func TestProcessRebuy_DeniesWindowClosed(t *testing.T) {
 	require.NoError(t, err) // Denial is event, not error
 	var denied examples.RebuyDenied
 	_ = proto.Unmarshal(result.Pages[0].GetEvent().Value, &denied)
-	assert.Equal(t, "window_closed", denied.Reason)
+	assert.Contains(t, denied.Reason, "closed")
 }
 
 func TestProcessRebuy_DeniesMaxReached(t *testing.T) {
@@ -88,7 +90,7 @@ func TestProcessRebuy_DeniesMaxReached(t *testing.T) {
 	require.NoError(t, err)
 	var denied examples.RebuyDenied
 	_ = proto.Unmarshal(result.Pages[0].GetEvent().Value, &denied)
-	assert.Equal(t, "max_reached", denied.Reason)
+	assert.Contains(t, denied.Reason, "Maximum")
 }
 
 func TestProcessRebuy_Success(t *testing.T) {

@@ -9,20 +9,54 @@ ROOT := `git rev-parse --show-toplevel`
 default:
     @just --list
 
-# Generate protos for client library (required before build)
-proto-gen:
+# Generate proto code from submodule.
+#
+# Idempotent: skips when bindings are fresher than the newest .proto source.
+# Matches the host-side `just generate-proto` shape so behavior is identical
+# whether invoked from host wrapper or directly inside the devcontainer (CI).
+generate-proto:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    src_dir="{{ROOT}}/angzarr-project/proto"
+    out_dir="{{ROOT}}/angzarr-client-go/proto"
+    if [ ! -d "$src_dir" ]; then
+        echo "[generate-proto] $src_dir missing — submodule not initialized?" >&2
+        exit 1
+    fi
+    # OLDEST_PB vs NEWEST_PROTO — bindings are up-to-date iff the
+    # oldest generated .pb.go is newer than the newest source .proto.
+    # (Matches the other 5 langs. The previous NEWEST_PB inversion was
+    # a workaround for orphan .pb.go leftovers that have since been
+    # wiped.)
+    newest_proto=$(find "$src_dir" -name '*.proto' -printf '%T@\n' 2>/dev/null \
+                    | sort -n | tail -1)
+    oldest_pb=$(find "$out_dir" -name '*.pb.go' -printf '%T@\n' 2>/dev/null \
+                    | sort -n | head -1)
+    if [ -n "$newest_proto" ] && [ -n "$oldest_pb" ] \
+        && awk -v p="$newest_proto" -v b="$oldest_pb" 'BEGIN{exit !(b>p)}'; then
+        echo "[generate-proto] bindings up-to-date, skipping"
+        exit 0
+    fi
+    just generate-proto-force
+
+# Always regenerate, ignoring mtimes.
+generate-proto-force:
     cd {{ROOT}} && buf generate
 
-build: proto-gen
+# Back-compat aliases.
+proto-gen: generate-proto
+proto: generate-proto
+
+build: generate-proto
     go mod tidy && go build ./...
 
-test-unit: proto-gen
+test-unit: generate-proto
     go mod tidy && go test -v ./tests/ -timeout=120s
 
-test-acceptance: proto-gen
+test-acceptance: generate-proto
     PLAYER_URL="${PLAYER_URL:-localhost:1310}" go test -v -tags=acceptance ./tests/ -timeout=600s
 
-mutation-test: proto-gen
+mutation-test: generate-proto
     go mod tidy && go test -v -tags=mutation -run TestMutation -timeout 30m ./tests/
 
 test: test-unit test-acceptance

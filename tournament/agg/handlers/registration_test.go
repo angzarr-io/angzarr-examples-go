@@ -3,13 +3,13 @@ package handlers
 import (
 	"testing"
 
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/angzarr/v1"
 )
 
 func makeCommandBook() *pb.CommandBook {
@@ -30,10 +30,10 @@ func TestOpenRegistration_RejectsNonExistent(t *testing.T) {
 }
 
 func TestOpenRegistration_RejectsAlreadyOpen(t *testing.T) {
-	state := TournamentState{
-		Name:   "Test",
-		Status: examples.TournamentStatus_TOURNAMENT_REGISTRATION_OPEN,
-	}
+	state := NewTournamentState()
+	state.Name = "Test"
+	state.Status = examples.TournamentStatus_TOURNAMENT_REGISTRATION_OPEN
+	state.RegistrationOpen = true
 	cmd := &examples.OpenRegistration{}
 	cmdAny, _ := anypb.New(cmd)
 
@@ -44,10 +44,9 @@ func TestOpenRegistration_RejectsAlreadyOpen(t *testing.T) {
 }
 
 func TestOpenRegistration_RejectsRunning(t *testing.T) {
-	state := TournamentState{
-		Name:   "Test",
-		Status: examples.TournamentStatus_TOURNAMENT_RUNNING,
-	}
+	state := NewTournamentState()
+	state.Name = "Test"
+	state.Status = examples.TournamentStatus_TOURNAMENT_RUNNING
 	cmd := &examples.OpenRegistration{}
 	cmdAny, _ := anypb.New(cmd)
 
@@ -57,10 +56,9 @@ func TestOpenRegistration_RejectsRunning(t *testing.T) {
 }
 
 func TestOpenRegistration_Success(t *testing.T) {
-	state := TournamentState{
-		Name:   "Test",
-		Status: examples.TournamentStatus_TOURNAMENT_CREATED,
-	}
+	state := NewTournamentState()
+	state.Name = "Test"
+	state.Status = examples.TournamentStatus_TOURNAMENT_CREATED
 	cmd := &examples.OpenRegistration{}
 	cmdAny, _ := anypb.New(cmd)
 
@@ -73,10 +71,9 @@ func TestOpenRegistration_Success(t *testing.T) {
 }
 
 func TestCloseRegistration_RejectsNotOpen(t *testing.T) {
-	state := TournamentState{
-		Name:   "Test",
-		Status: examples.TournamentStatus_TOURNAMENT_CREATED,
-	}
+	state := NewTournamentState()
+	state.Name = "Test"
+	state.Status = examples.TournamentStatus_TOURNAMENT_CREATED
 	cmd := &examples.CloseRegistration{}
 	cmdAny, _ := anypb.New(cmd)
 
@@ -87,11 +84,11 @@ func TestCloseRegistration_RejectsNotOpen(t *testing.T) {
 }
 
 func TestCloseRegistration_IncludesTotalRegistrations(t *testing.T) {
-	state := TournamentState{
-		Name:              "Test",
-		Status:            examples.TournamentStatus_TOURNAMENT_REGISTRATION_OPEN,
-		RegisteredPlayers: map[string]*examples.PlayerRegistration{"a": {}, "b": {}, "c": {}},
-	}
+	state := NewTournamentState()
+	state.Name = "Test"
+	state.Status = examples.TournamentStatus_TOURNAMENT_REGISTRATION_OPEN
+	state.RegistrationOpen = true
+	state.RegisteredPlayers = map[string]*examples.PlayerRegistration{"a": {}, "b": {}, "c": {}}
 	cmd := &examples.CloseRegistration{}
 	cmdAny, _ := anypb.New(cmd)
 
@@ -103,30 +100,26 @@ func TestCloseRegistration_IncludesTotalRegistrations(t *testing.T) {
 	assert.Equal(t, int32(3), event.TotalRegistrations)
 }
 
-func TestEnrollPlayer_RejectsClosedRegistration(t *testing.T) {
-	state := TournamentState{
-		Name:              "Test",
-		Status:            examples.TournamentStatus_TOURNAMENT_CREATED,
-		RegisteredPlayers: make(map[string]*examples.PlayerRegistration),
-	}
-	cmd := &examples.EnrollPlayer{PlayerRoot: []byte{1, 2, 3}}
+func TestEnrollPlayer_RejectsEmptyPlayerRoot(t *testing.T) {
+	state := NewTournamentState()
+	state.Name = "Test"
+	state.Status = examples.TournamentStatus_TOURNAMENT_REGISTRATION_OPEN
+	state.RegistrationOpen = true
+	cmd := &examples.EnrollPlayer{PlayerRoot: []byte{}}
 	cmdAny, _ := anypb.New(cmd)
 
 	result, err := HandleEnrollPlayer(makeCommandBook(), cmdAny, state, 0)
 
-	require.NoError(t, err) // Rejection is an event, not an error
+	require.NoError(t, err) // emits event, not error
 	var rejected examples.TournamentEnrollmentRejected
 	_ = result.Pages[0].GetEvent().UnmarshalTo(&rejected)
-	assert.Equal(t, "closed", rejected.Reason)
+	assert.Contains(t, rejected.Reason, "player_root")
 }
 
-func TestEnrollPlayer_RejectsFull(t *testing.T) {
-	state := TournamentState{
-		Name:              "Test",
-		Status:            examples.TournamentStatus_TOURNAMENT_REGISTRATION_OPEN,
-		MaxPlayers:        2,
-		RegisteredPlayers: map[string]*examples.PlayerRegistration{"a": {}, "b": {}},
-	}
+func TestEnrollPlayer_RejectsClosedRegistration(t *testing.T) {
+	state := NewTournamentState()
+	state.Name = "Test"
+	state.Status = examples.TournamentStatus_TOURNAMENT_CREATED
 	cmd := &examples.EnrollPlayer{PlayerRoot: []byte{1, 2, 3}}
 	cmdAny, _ := anypb.New(cmd)
 
@@ -135,18 +128,36 @@ func TestEnrollPlayer_RejectsFull(t *testing.T) {
 	require.NoError(t, err)
 	var rejected examples.TournamentEnrollmentRejected
 	_ = result.Pages[0].GetEvent().UnmarshalTo(&rejected)
-	assert.Equal(t, "full", rejected.Reason)
+	assert.Contains(t, rejected.Reason, "not open")
+}
+
+func TestEnrollPlayer_RejectsFull(t *testing.T) {
+	state := NewTournamentState()
+	state.Name = "Test"
+	state.Status = examples.TournamentStatus_TOURNAMENT_REGISTRATION_OPEN
+	state.RegistrationOpen = true
+	state.MaxPlayers = 2
+	state.RegisteredPlayers = map[string]*examples.PlayerRegistration{"a": {}, "b": {}}
+	cmd := &examples.EnrollPlayer{PlayerRoot: []byte{1, 2, 3}}
+	cmdAny, _ := anypb.New(cmd)
+
+	result, err := HandleEnrollPlayer(makeCommandBook(), cmdAny, state, 0)
+
+	require.NoError(t, err)
+	var rejected examples.TournamentEnrollmentRejected
+	_ = result.Pages[0].GetEvent().UnmarshalTo(&rejected)
+	assert.Contains(t, rejected.Reason, "full")
 }
 
 func TestEnrollPlayer_RejectsDuplicate(t *testing.T) {
 	playerRoot := []byte{1, 2, 3}
 	rootHex := "010203"
-	state := TournamentState{
-		Name:              "Test",
-		Status:            examples.TournamentStatus_TOURNAMENT_REGISTRATION_OPEN,
-		MaxPlayers:        100,
-		RegisteredPlayers: map[string]*examples.PlayerRegistration{rootHex: {}},
-	}
+	state := NewTournamentState()
+	state.Name = "Test"
+	state.Status = examples.TournamentStatus_TOURNAMENT_REGISTRATION_OPEN
+	state.RegistrationOpen = true
+	state.MaxPlayers = 100
+	state.RegisteredPlayers = map[string]*examples.PlayerRegistration{rootHex: {}}
 	cmd := &examples.EnrollPlayer{PlayerRoot: playerRoot}
 	cmdAny, _ := anypb.New(cmd)
 
@@ -155,18 +166,17 @@ func TestEnrollPlayer_RejectsDuplicate(t *testing.T) {
 	require.NoError(t, err)
 	var rejected examples.TournamentEnrollmentRejected
 	_ = result.Pages[0].GetEvent().UnmarshalTo(&rejected)
-	assert.Equal(t, "already_registered", rejected.Reason)
+	assert.Contains(t, rejected.Reason, "already registered")
 }
 
 func TestEnrollPlayer_Success(t *testing.T) {
-	state := TournamentState{
-		Name:              "Test",
-		Status:            examples.TournamentStatus_TOURNAMENT_REGISTRATION_OPEN,
-		MaxPlayers:        100,
-		BuyIn:             1000,
-		StartingStack:     10000,
-		RegisteredPlayers: make(map[string]*examples.PlayerRegistration),
-	}
+	state := NewTournamentState()
+	state.Name = "Test"
+	state.Status = examples.TournamentStatus_TOURNAMENT_REGISTRATION_OPEN
+	state.RegistrationOpen = true
+	state.MaxPlayers = 100
+	state.BuyIn = 1000
+	state.StartingStack = 10000
 	cmd := &examples.EnrollPlayer{PlayerRoot: []byte{1, 2, 3}}
 	cmdAny, _ := anypb.New(cmd)
 

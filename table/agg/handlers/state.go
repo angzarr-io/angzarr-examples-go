@@ -5,8 +5,8 @@ import (
 	"encoding/hex"
 
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/angzarr/v1"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 )
 
 // TableState represents the current state of a table aggregate.
@@ -25,6 +25,21 @@ type TableState struct {
 	HandCount            int64
 	CurrentHandRoot      []byte
 	Status               string // "waiting", "in_hand", "paused"
+	// Last hand's blind positions, retained between hands so the
+	// dead-button advancement rule (TDA Rule 32 / 34B) can compute the
+	// next BB without re-deriving from the seat layout alone. Default
+	// to -1 (no prior hand played).
+	LastBigBlindPosition   int32
+	LastSmallBlindPosition int32
+	// HandForHandStatus tracks tournament hand-for-hand bubble sync per
+	// Phase I-Go-v2a HIGH-EX-2.2.3. Values: "" (not in H4H), "WAITING"
+	// (Enter received; round in progress), "COMPLETE" (MarkComplete
+	// received; tournament can round up). See hand_for_hand.go.
+	HandForHandStatus string
+	// HandForHandTournamentRoot is captured from EnterTableHandForHand so
+	// later events can be routed back to the owning tournament aggregate
+	// without a separate registry. Cleared on TableHandForHandEnded.
+	HandForHandTournamentRoot []byte
 }
 
 // SeatState represents a player seat at the table.
@@ -39,7 +54,9 @@ type SeatState struct {
 // NewTableState creates a new empty table state.
 func NewTableState() TableState {
 	return TableState{
-		Seats: make(map[int32]*SeatState),
+		Seats:                  make(map[int32]*SeatState),
+		LastBigBlindPosition:   -1,
+		LastSmallBlindPosition: -1,
 	}
 }
 
@@ -127,6 +144,8 @@ func applyHandStarted(state *TableState, event *examples.HandStarted) {
 	state.CurrentHandRoot = event.HandRoot
 	state.HandCount = event.HandNumber
 	state.DealerPosition = event.DealerPosition
+	state.LastSmallBlindPosition = event.SmallBlindPosition
+	state.LastBigBlindPosition = event.BigBlindPosition
 	state.Status = "in_hand"
 }
 
@@ -154,6 +173,68 @@ func applyChipsAdded(state *TableState, event *examples.ChipsAdded) {
 	}
 }
 
+// applyPlayerSeated seats a PM-orchestrated PlayerSeated event onto
+// state. Mirrors apply_chips_added shape since the table records the
+// seat snapshot for both flows. See Python table.py:273-281.
+func applyPlayerSeated(state *TableState, event *examples.PlayerSeated) {
+	state.Seats[event.SeatPosition] = &SeatState{
+		Position:     event.SeatPosition,
+		PlayerRoot:   event.PlayerRoot,
+		Stack:        event.Stack,
+		IsActive:     true,
+		IsSittingOut: false,
+	}
+}
+
+// applyRebuyChipsAdded updates the seated stack when the PM-orchestrated
+// rebuy flow completes. Same shape as ChipsAdded but a different proto
+// type (rebuy_proto.RebuyChipsAdded). Python table.py:291-298.
+func applyRebuyChipsAdded(state *TableState, event *examples.RebuyChipsAdded) {
+	playerHex := hex.EncodeToString(event.PlayerRoot)
+	for pos, seat := range state.Seats {
+		if hex.EncodeToString(seat.PlayerRoot) == playerHex {
+			state.Seats[pos].Stack = event.NewStack
+			break
+		}
+	}
+}
+
+// applyPlayerHandKilledByPenalty debits a killed seat's stack by the
+// posted blinds; the seat itself remains. TDA Rule 71C. Python
+// table.py:261-271.
+func applyPlayerHandKilledByPenalty(state *TableState, event *examples.PlayerHandKilledByPenalty) {
+	seat, ok := state.Seats[event.SeatPosition]
+	if !ok || event.StackCharged == 0 {
+		return
+	}
+	if seat.Stack > event.StackCharged {
+		seat.Stack -= event.StackCharged
+	} else {
+		seat.Stack = 0
+	}
+}
+
+// applyTableHandForHandWaiting transitions H4H status "" → "WAITING" and
+// stores the tournament_root for routing later events. Phase I-Go-v2a.
+func applyTableHandForHandWaiting(state *TableState, event *examples.TableHandForHandWaiting) {
+	state.HandForHandStatus = "WAITING"
+	state.HandForHandTournamentRoot = event.TournamentRoot
+}
+
+// applyTableHandForHandRoundComplete transitions H4H status "WAITING" →
+// "COMPLETE". The tournament_root stays in state so a subsequent End event
+// can be authored without consulting external context. Phase I-Go-v2a.
+func applyTableHandForHandRoundComplete(state *TableState, _ *examples.TableHandForHandRoundComplete) {
+	state.HandForHandStatus = "COMPLETE"
+}
+
+// applyTableHandForHandEnded clears H4H state ("WAITING"/"COMPLETE" → "")
+// and forgets the tournament_root. Phase I-Go-v2a.
+func applyTableHandForHandEnded(state *TableState, _ *examples.TableHandForHandEnded) {
+	state.HandForHandStatus = ""
+	state.HandForHandTournamentRoot = nil
+}
+
 // stateRouter is the fluent state reconstruction router.
 var stateRouter = angzarr.NewStateRouter(NewTableState).
 	On(applyTableCreated).
@@ -163,7 +244,13 @@ var stateRouter = angzarr.NewStateRouter(NewTableState).
 	On(applyPlayerSatIn).
 	On(applyHandStarted).
 	On(applyHandEnded).
-	On(applyChipsAdded)
+	On(applyChipsAdded).
+	On(applyPlayerSeated).
+	On(applyRebuyChipsAdded).
+	On(applyPlayerHandKilledByPenalty).
+	On(applyTableHandForHandWaiting).
+	On(applyTableHandForHandRoundComplete).
+	On(applyTableHandForHandEnded)
 
 // RebuildState rebuilds table state from event history.
 func RebuildState(eventBook *pb.EventBook) TableState {

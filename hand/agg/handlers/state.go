@@ -3,10 +3,11 @@ package handlers
 
 import (
 	"encoding/hex"
+	"strconv"
 
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/angzarr/v1"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 )
 
 // HandState represents the current state of a hand aggregate.
@@ -87,6 +88,22 @@ func (s HandState) TotalPot() int64 {
 	return total
 }
 
+// IsShowdown reports whether the hand is in the showdown phase.
+func (s HandState) IsShowdown() bool {
+	return s.Status == "showdown"
+}
+
+// PlayerHasPostedBlind reports whether any player has bet this round
+// (i.e. a blind has been posted).
+func (s HandState) PlayerHasPostedBlind() bool {
+	for _, p := range s.Players {
+		if p.BetThisRound > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // GetPlayerByRoot returns the player state for a given player root.
 func (s HandState) GetPlayerByRoot(root []byte) *PlayerHandState {
 	return s.Players[hex.EncodeToString(root)]
@@ -106,7 +123,11 @@ func (s HandState) ActivePlayerCount() int {
 // Event applier functions for StateRouter
 
 func applyCardsDealt(state *HandState, event *examples.CardsDealt) {
-	state.HandID = hex.EncodeToString(event.TableRoot) + "_" + string(rune(event.HandNumber))
+	// Hand ID format: hex(table_root) + "_" + decimal(hand_number).
+	// Pre-fix this used `string(rune(N))` which yielded the unicode char
+	// at code-point N instead of the decimal string — broke hand_id
+	// invariants asserted by EU-1133 ("hand_id is aabbccdd_5").
+	state.HandID = hex.EncodeToString(event.TableRoot) + "_" + strconv.FormatInt(event.HandNumber, 10)
 	state.TableRoot = event.TableRoot
 	state.HandNumber = event.HandNumber
 	state.GameVariant = event.GameVariant
@@ -181,6 +202,13 @@ func applyBettingRoundComplete(state *HandState, event *examples.BettingRoundCom
 	}
 	state.CurrentBet = 0
 
+	// Phase advancement: Five Card Draw transitions PREFLOP → DRAW;
+	// other variants' phase is advanced by CommunityCardsDealt.
+	if state.GameVariant == examples.GameVariant_FIVE_CARD_DRAW &&
+		event.CompletedPhase == examples.BettingPhase_PREFLOP {
+		state.CurrentPhase = examples.BettingPhase_DRAW
+	}
+
 	// Update stacks from snapshot
 	for _, snap := range event.Stacks {
 		key := hex.EncodeToString(snap.PlayerRoot)
@@ -243,6 +271,116 @@ func applyHandComplete(state *HandState, event *examples.HandComplete) {
 	}
 }
 
+// applyBringInPosted updates state for a stud-game bring-in (forced first
+// bet on third street). Mirrors Python hand/agg/handlers/hand.py
+// applies(BringInPosted).
+func applyBringInPosted(state *HandState, event *examples.BringInPosted) {
+	key := hex.EncodeToString(event.PlayerRoot)
+	if player := state.Players[key]; player != nil {
+		player.Stack = event.PlayerStack
+		player.BetThisRound += event.Amount
+		player.TotalInvested += event.Amount
+	}
+	state.Pots[0].Amount = event.PotTotal
+	if event.Amount > state.CurrentBet {
+		state.CurrentBet = event.Amount
+	}
+}
+
+// applyStudStreetDealt advances state when a new stud street is dealt
+// (4th-7th streets in 7-card stud). Mirrors Python applies(StudStreetDealt).
+func applyStudStreetDealt(state *HandState, event *examples.StudStreetDealt) {
+	// Stud uses up-cards: append each dealt up-card to that player's hole
+	// cards (stud has no community board — every player gets their own).
+	// Consume one card from the deck per up-card dealt.
+	for _, pc := range event.UpCards {
+		key := hex.EncodeToString(pc.PlayerRoot)
+		if player := state.Players[key]; player != nil {
+			player.HoleCards = append(player.HoleCards, pc.UpCards...)
+		}
+		if len(pc.UpCards) > 0 && len(pc.UpCards) <= len(state.RemainingDeck) {
+			state.RemainingDeck = state.RemainingDeck[len(pc.UpCards):]
+		}
+	}
+}
+
+// applyActionClockStarted is a state-neutral applier — the clock event is
+// informational; no state changes. Mirrors Python applies(ActionClockStarted)
+// which has the same shape (no state mutation).
+func applyActionClockStarted(_ *HandState, _ *examples.ActionClockStarted) {}
+
+// applyPriorChipPulledBack reverses a player's chip commitment after a
+// PullBackPriorChip command resolved. Mirrors Python
+// applies(PriorChipPulledBack).
+//
+// The proto event carries only ChipsPulled (not derived stack/pot totals),
+// so we reconstruct the deltas: refund chips_pulled into the player's stack,
+// reverse it out of the round commitment, and decrement the main pot by the
+// same amount.
+func applyPriorChipPulledBack(state *HandState, event *examples.PriorChipPulledBack) {
+	key := hex.EncodeToString(event.PlayerRoot)
+	if player := state.Players[key]; player != nil {
+		player.Stack += event.ChipsPulled
+		player.BetThisRound -= event.ChipsPulled
+		if player.BetThisRound < 0 {
+			player.BetThisRound = 0
+		}
+		player.TotalInvested -= event.ChipsPulled
+		if player.TotalInvested < 0 {
+			player.TotalInvested = 0
+		}
+	}
+	state.Pots[0].Amount -= event.ChipsPulled
+	if state.Pots[0].Amount < 0 {
+		state.Pots[0].Amount = 0
+	}
+}
+
+// applyUnderbetCorrected updates state when a CorrectIllegalBet command
+// resolved. Mirrors Python applies(UnderbetCorrected).
+//
+// Each UnderbetAdjustment carries PriorContribution / NewContribution and a
+// RefundToStack delta. Adjustments can move chips either way:
+//   - PL_ILLEGAL_OVERBET: NewContribution < PriorContribution; refund to stack
+//   - NL_DECLARED_UNDERRAISE: NewContribution > PriorContribution; extra chips
+//     come out of stack.
+//
+// We update BetThisRound/TotalInvested to the new absolute contribution and
+// adjust stack by the refund delta (positive refund = chips back to stack).
+// CurrentBet is raised to corrected_amount.
+func applyUnderbetCorrected(state *HandState, event *examples.UnderbetCorrected) {
+	for _, adj := range event.Adjustments {
+		key := hex.EncodeToString(adj.PlayerRoot)
+		delta := adj.NewContribution - adj.PriorContribution
+		if player := state.Players[key]; player != nil {
+			player.BetThisRound += delta
+			if player.BetThisRound < 0 {
+				player.BetThisRound = 0
+			}
+			player.TotalInvested += delta
+			if player.TotalInvested < 0 {
+				player.TotalInvested = 0
+			}
+			player.Stack += adj.RefundToStack - (delta - 0)
+			// Concretely: if delta > 0 chips moved stack -> pot; if delta < 0
+			// (NewContribution < PriorContribution) refund_to_stack lifts the
+			// stack back up. RefundToStack already encodes the player-visible
+			// net effect on stack for the common PL overbet case, but for the
+			// underraise case the delta-out-of-stack path must subtract too.
+			if player.Stack < 0 {
+				player.Stack = 0
+			}
+		}
+		state.Pots[0].Amount += delta
+		if state.Pots[0].Amount < 0 {
+			state.Pots[0].Amount = 0
+		}
+	}
+	if event.CorrectedAmount > state.CurrentBet {
+		state.CurrentBet = event.CorrectedAmount
+	}
+}
+
 // stateRouter is the fluent state reconstruction router.
 var stateRouter = angzarr.NewStateRouter(NewHandState).
 	On(applyCardsDealt).
@@ -255,7 +393,12 @@ var stateRouter = angzarr.NewStateRouter(NewHandState).
 	On(applyCardsRevealed).
 	On(applyCardsMucked).
 	On(applyPotAwarded).
-	On(applyHandComplete)
+	On(applyHandComplete).
+	On(applyBringInPosted).
+	On(applyStudStreetDealt).
+	On(applyActionClockStarted).
+	On(applyPriorChipPulledBack).
+	On(applyUnderbetCorrected)
 
 // RebuildState rebuilds hand state from event history.
 func RebuildState(eventBook *pb.EventBook) HandState {

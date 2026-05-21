@@ -1,11 +1,12 @@
 package handlers
 
 import (
+	"fmt"
 	"time"
 
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/angzarr/v1"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -23,8 +24,13 @@ func transferFundsValidate(cmd *examples.TransferFunds) (int64, error) {
 	if cmd.Amount != nil {
 		amount = cmd.Amount.Amount
 	}
-	if amount <= 0 {
-		return 0, angzarr.NewInvalidArgumentError("amount must be positive")
+	// Transfer rejects zero with AMOUNT_MUST_BE_NON_ZERO (mirrors Python:
+	// negative transfers can represent refunds, so only zero is invalid).
+	if amount == 0 {
+		return 0, angzarr.NewInvalidArgumentRejectionWithCode(
+			"AMOUNT_MUST_BE_NON_ZERO",
+			"amount must be non-zero",
+			map[string]string{"value": fmt.Sprintf("%d", amount)})
 	}
 	if cmd.Reason == "" {
 		return 0, angzarr.NewInvalidArgumentError("reason is required")

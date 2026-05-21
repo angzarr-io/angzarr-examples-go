@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"

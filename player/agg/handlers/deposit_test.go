@@ -3,7 +3,7 @@ package handlers
 import (
 	"testing"
 
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"github.com/stretchr/testify/assert"
 )
 

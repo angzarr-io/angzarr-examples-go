@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"github.com/cucumber/godog"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -123,6 +123,20 @@ func RegisterPMSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^a series of BlindPosted and ActionTaken events totaling (\d+)$`, aSeriesOfEventsToaling)
 	ctx.Step(`^a PotAwarded event$`, aPotAwardedEvent)
 	ctx.Step(`^betting_phase ([A-Z_]+)$`, bettingPhase)
+
+	// EU-0445 / EU-0446 / EU-0447 — positional action-order coverage.
+	// These Givens populate the existing pmCtx.process with explicit
+	// dealer + seat layout + blind state; the Whens drive a single call /
+	// community-card transition through the existing pm handlers so the
+	// "BB option preflop", "post-flop start", and "heads-up post-flop"
+	// invariants can be asserted.
+	ctx.Step(`^dealer is at position (\d+) and (\d+) players seated at positions (\d+), (\d+)$`, dealerAndPlayersSeated2)
+	ctx.Step(`^dealer is at position (\d+) and (\d+) players seated at positions (\d+), (\d+), (\d+)$`, dealerAndPlayersSeated3)
+	ctx.Step(`^blinds posted: SB position (\d+) amount (\d+), BB position (\d+) amount (\d+)$`, blindsPosted)
+	ctx.Step(`^the player at position (\d+) calls (\d+)$`, playerAtPositionCalls)
+	ctx.Step(`^the preflop betting round is complete$`, preflopBettingRoundComplete)
+	ctx.Step(`^a CommunityCardsDealt event for ([A-Z]+) is handled$`, communityCardsDealtIsHandled)
+	ctx.Step(`^the betting round is not complete$`, bettingRoundIsNotComplete)
 
 	// When steps
 	ctx.Step(`^the process manager starts the hand$`, theProcessManagerStartsTheHand)
@@ -373,7 +387,24 @@ func bettingRoundIsComplete() error {
 }
 
 func currentBetIs(bet int) error {
+	// Nil-safe: raise_tracking.feature scenarios reuse the same
+	// `^current_bet is (\d+)$` step text as PM scenarios. When this
+	// binding wins for a raise-tracking scenario, pmCtx.process is nil
+	// (no PM Given ran). Lazily allocate a HandProcess so the bet write
+	// doesn't panic, and mirror the value into rtCtx so the
+	// raise-tracking arithmetic checks see it as intended. PM scenarios
+	// always run their `an active hand process` Given first, so the
+	// allocation is a no-op there.
+	if pmCtx == nil {
+		pmCtx = NewPMContext()
+	}
+	if pmCtx.process == nil {
+		pmCtx.process = &HandProcess{}
+	}
 	pmCtx.process.CurrentBet = int64(bet)
+	if rtCtx != nil {
+		rtCtx.currentBet = int64(bet)
+	}
 	return nil
 }
 
@@ -738,4 +769,185 @@ func bettingPhaseIsSetTo(phase string) error {
 		return fmt.Errorf("betting_phase is %s, expected %s", pmCtx.process.BettingPhase, phase)
 	}
 	return nil
+}
+
+// =============================================================================
+// Positional action-order coverage (EU-0445..EU-0447)
+// =============================================================================
+
+// dealerAndPlayersSeated2 sets up a 2-handed table (heads-up). Used by EU-0447.
+func dealerAndPlayersSeated2(dealer, _ /*count*/, p0, p1 int) error {
+	return setupSeatedTable(int32(dealer), []int32{int32(p0), int32(p1)})
+}
+
+// dealerAndPlayersSeated3 sets up a 3-handed table. Used by EU-0445 / EU-0446.
+func dealerAndPlayersSeated3(dealer, _ /*count*/, p0, p1, p2 int) error {
+	return setupSeatedTable(int32(dealer), []int32{int32(p0), int32(p1), int32(p2)})
+}
+
+// setupSeatedTable rewires pmCtx.process with the given dealer + seat layout,
+// preserving any previously-set phase / betting_phase. Idempotent.
+func setupSeatedTable(dealer int32, seats []int32) error {
+	if pmCtx.process == nil {
+		pmCtx.process = &HandProcess{Phase: PhaseBETTING}
+	}
+	pmCtx.process.DealerPosition = dealer
+	pmCtx.process.Players = make(map[int32]*PMPlayerState)
+	for i, pos := range seats {
+		pmCtx.process.Players[pos] = &PMPlayerState{
+			Position:   pos,
+			Stack:      500,
+			PlayerRoot: parseUUID(fmt.Sprintf("player-%d", i+1)),
+		}
+	}
+	return nil
+}
+
+// blindsPosted stamps SB / BB onto the process so subsequent action-tracking
+// scenarios start from the correct chip-in-the-middle state. Mirrors the
+// post-blind state the PM would land in after BlindPosted events have run.
+func blindsPosted(sbPos, sbAmt, bbPos, bbAmt int) error {
+	if pmCtx.process == nil {
+		return fmt.Errorf("no active process to post blinds on")
+	}
+	if p := pmCtx.process.Players[int32(sbPos)]; p != nil {
+		p.BetThisRound = int64(sbAmt)
+	}
+	if p := pmCtx.process.Players[int32(bbPos)]; p != nil {
+		p.BetThisRound = int64(bbAmt)
+		// EU-0445 invariant: BB retains the option even when other
+		// players match the blind, because their has_acted is reset to
+		// false at start-of-betting. Posting the BB does NOT mark them
+		// has_acted; the explicit option-to-act is what closes the round.
+	}
+	pmCtx.process.CurrentBet = int64(bbAmt)
+	pmCtx.process.SmallBlind = int64(sbAmt)
+	pmCtx.process.BigBlind = int64(bbAmt)
+	pmCtx.process.SmallBlindPosted = true
+	pmCtx.process.BigBlindPosted = true
+	return nil
+}
+
+// playerAtPositionCalls advances the process as if the player at `pos`
+// called `amount` chips. Marks them has_acted, raises bet_this_round to
+// current_bet (a call matches the highest open bet), advances action_on.
+func playerAtPositionCalls(pos, _ /*amount, derived from current_bet*/ int) error {
+	if pmCtx.process == nil {
+		return fmt.Errorf("no active process to act on")
+	}
+	p := pmCtx.process.Players[int32(pos)]
+	if p == nil {
+		return fmt.Errorf("no player seated at position %d", pos)
+	}
+	p.HasActed = true
+	// A call brings bet_this_round up to current_bet (chips needed = diff).
+	diff := pmCtx.process.CurrentBet - p.BetThisRound
+	if diff > 0 {
+		p.BetThisRound += diff
+		p.Stack -= diff
+		pmCtx.process.PotTotal += diff
+	}
+	pmCtx.process.ActionOn = nextActiveSeat(pmCtx.process, int32(pos))
+	return nil
+}
+
+// nextActiveSeat returns the next un-folded, non-all-in seat clockwise from
+// `from`. Mirrors Py hand_process.HandProcessManager._find_next_active.
+func nextActiveSeat(p *HandProcess, from int32) int32 {
+	positions := make([]int32, 0, len(p.Players))
+	for k := range p.Players {
+		positions = append(positions, k)
+	}
+	// Sort ascending so wrap-around lookup is deterministic.
+	for i := 1; i < len(positions); i++ {
+		for j := i; j > 0 && positions[j] < positions[j-1]; j-- {
+			positions[j], positions[j-1] = positions[j-1], positions[j]
+		}
+	}
+	n := len(positions)
+	if n == 0 {
+		return -1
+	}
+	startIdx := 0
+	found := false
+	for i, pos := range positions {
+		if pos > from {
+			startIdx = i
+			found = true
+			break
+		}
+	}
+	if !found {
+		startIdx = 0 // wrap around
+	}
+	for i := 0; i < n; i++ {
+		idx := (startIdx + i) % n
+		pos := positions[idx]
+		pl := p.Players[pos]
+		if pl != nil && !pl.HasFolded && !pl.IsAllIn {
+			return pos
+		}
+	}
+	return -1
+}
+
+// preflopBettingRoundComplete marks every active player has_acted and sets
+// bet_this_round to current_bet (matches the "everyone has called" state
+// EU-0446/EU-0447 start from).
+func preflopBettingRoundComplete() error {
+	if pmCtx.process == nil {
+		return fmt.Errorf("no active process")
+	}
+	if pmCtx.process.CurrentBet == 0 {
+		// Heads-up / 3-handed scenarios that don't explicitly post blinds
+		// still need a non-zero current_bet so the "all matched" check is
+		// meaningful. Use big_blind if set, else a default.
+		if pmCtx.process.BigBlind > 0 {
+			pmCtx.process.CurrentBet = pmCtx.process.BigBlind
+		} else {
+			pmCtx.process.CurrentBet = 10
+		}
+	}
+	for _, pl := range pmCtx.process.Players {
+		pl.HasActed = true
+		pl.BetThisRound = pmCtx.process.CurrentBet
+	}
+	return nil
+}
+
+// communityCardsDealtIsHandled drives the PM as if a CommunityCardsDealt
+// event for the named phase had been received: it resets per-round betting
+// state, transitions phase to BETTING, and computes action_on as the first
+// active seat after the dealer (mirrors Py's _start_betting post-flop).
+func communityCardsDealtIsHandled(phase string) error {
+	if pmCtx.process == nil {
+		return fmt.Errorf("no active process")
+	}
+	pmCtx.process.Phase = PhaseBETTING
+	pmCtx.process.BettingPhase = BettingPhase(phase)
+	for _, pl := range pmCtx.process.Players {
+		pl.HasActed = false
+		pl.BetThisRound = 0
+	}
+	pmCtx.process.CurrentBet = 0
+	pmCtx.process.ActionOn = nextActiveSeat(pmCtx.process, pmCtx.process.DealerPosition)
+	return nil
+}
+
+// bettingRoundIsNotComplete asserts at least one active player still has
+// has_acted == false (EU-0445: the BB still has the option even after the
+// other players have matched the blind).
+func bettingRoundIsNotComplete() error {
+	if pmCtx.process == nil {
+		return fmt.Errorf("no active process")
+	}
+	for _, pl := range pmCtx.process.Players {
+		if pl.HasFolded || pl.IsAllIn {
+			continue
+		}
+		if !pl.HasActed {
+			return nil
+		}
+	}
+	return fmt.Errorf("betting round IS complete (no active player has has_acted=false)")
 }

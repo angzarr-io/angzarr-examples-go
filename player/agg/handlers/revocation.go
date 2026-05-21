@@ -5,8 +5,8 @@ import (
 	"log"
 
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
-	examples "github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/angzarr/v1"
+	examples "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -38,7 +38,7 @@ func HandleTableJoinRejected(notification *pb.Notification, state PlayerState) *
 
 	event := &examples.FundsReleased{
 		Amount:              &examples.Currency{Amount: reservedAmount, CurrencyCode: "CHIPS"},
-		Key:           tableRoot,
+		Key:                 tableRoot,
 		NewAvailableBalance: &examples.Currency{Amount: newAvailable, CurrencyCode: "CHIPS"},
 		NewReservedBalance:  &examples.Currency{Amount: newReserved, CurrencyCode: "CHIPS"},
 		ReleasedAt:          timestamppb.Now(),

@@ -19,6 +19,11 @@ FROM docker.io/library/golang:${GO_VERSION}-alpine AS base
 
 RUN apk add --no-cache ca-certificates git
 
+# INFRA-1: trust any bind-mounted workspace path (rootless docker friendliness).
+RUN git config --system --add safe.directory '*' \
+ && git config --system --add safe.directory '/workspace' \
+ && git config --system --add safe.directory '/angzarr'
+
 WORKDIR /app
 
 # ============================================================================

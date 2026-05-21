@@ -2,11 +2,12 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/angzarr/v1"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"github.com/cucumber/godog"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -75,6 +76,7 @@ func RegisterSagaSteps(ctx *godog.ScenarioContext) {
 	ctx.Step(`^the command has game_variant TEXAS_HOLDEM$`, theCommandHasGameVariantTexasHoldem)
 	ctx.Step(`^the command has (\d+) players$`, theCommandHasPlayers)
 	ctx.Step(`^the command has hand_number (\d+)$`, theCommandHasHandNumber)
+	ctx.Step(`^the command has deck_seed equal to the hand_root$`, theCommandHasDeckSeedEqualToHandRoot)
 	ctx.Step(`^the command has (\d+) result$`, theCommandHasResult)
 	ctx.Step(`^the result has winner "([^"]*)" with amount (\d+)$`, theResultHasWinnerWithAmount)
 	ctx.Step(`^the first command has amount (\d+) for "([^"]*)"$`, theFirstCommandHasAmountFor)
@@ -120,15 +122,21 @@ func aHandStartedEventFromTableDomainWith(table *godog.Table) error {
 }
 
 func aHandCompleteEventFromHandDomainWith(table *godog.Table) error {
+	// HandComplete table comes in two shapes across scenarios:
+	//   | table_root | pot_total |   (legacy EU-0301)
+	//   | table_root |              (EU-0310/0317/0318 — Router scenarios)
+	// Read pot_total only when present so the single-column form doesn't
+	// index out of range.
 	row := table.Rows[1]
 	tableRoot := parseUUID(row.Cells[0].Value)
-	potTotal := parseInt64(row.Cells[1].Value)
 
 	event := &examples.HandComplete{
 		TableRoot:   tableRoot,
 		CompletedAt: timestamppb.Now(),
 	}
-	_ = potTotal // Used via winners
+	if len(row.Cells) > 1 {
+		_ = parseInt64(row.Cells[1].Value) // pot_total — exposed via winners
+	}
 
 	eventAny, err := anypb.New(event)
 	if err != nil {
@@ -361,6 +369,10 @@ func handleTableSyncSaga() error {
 			GameVariant:    hs.GameVariant,
 			Players:        players,
 			DealerPosition: hs.DealerPosition,
+			// EU-0300: the saga must propagate hand_root onto deck_seed so
+			// the deck shuffle is deterministic across runs — required for
+			// acceptance tests that assert specific cards.
+			DeckSeed: hs.HandRoot,
 		}
 		cmdAny, _ := anypb.New(cmd)
 
@@ -566,6 +578,32 @@ func theCommandHasHandNumber(num int) error {
 	_ = sagaCtx.resultCommands[0].Pages[0].GetCommand().UnmarshalTo(&dc)
 	if dc.HandNumber != int64(num) {
 		return fmt.Errorf("expected hand_number %d, got %d", num, dc.HandNumber)
+	}
+	return nil
+}
+
+// theCommandHasDeckSeedEqualToHandRoot asserts EU-0300: the saga propagates
+// HandStarted.hand_root into DealCards.deck_seed so deck shuffling is
+// deterministic across runs. Reads the saga's emitted DealCards command
+// (sagaCtx.resultCommands[0]) and compares its DeckSeed to the original
+// HandStarted's HandRoot (extracted from sagaCtx.sourceEvent).
+func theCommandHasDeckSeedEqualToHandRoot() error {
+	if len(sagaCtx.resultCommands) == 0 {
+		return fmt.Errorf("no commands")
+	}
+	if sagaCtx.sourceEvent == nil {
+		return fmt.Errorf("no source event to compare hand_root against")
+	}
+	var hs examples.HandStarted
+	if err := sagaCtx.sourceEvent.UnmarshalTo(&hs); err != nil {
+		return fmt.Errorf("source event is not a HandStarted: %w", err)
+	}
+	var dc examples.DealCards
+	if err := sagaCtx.resultCommands[0].Pages[0].GetCommand().UnmarshalTo(&dc); err != nil {
+		return fmt.Errorf("emitted command is not a DealCards: %w", err)
+	}
+	if !bytes.Equal(dc.DeckSeed, hs.HandRoot) {
+		return fmt.Errorf("expected deck_seed=%x, got %x", hs.HandRoot, dc.DeckSeed)
 	}
 	return nil
 }

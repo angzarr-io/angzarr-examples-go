@@ -16,8 +16,8 @@ import (
 	"time"
 
 	angzarr "github.com/benjaminabbitt/angzarr/client/go"
-	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr"
-	"github.com/benjaminabbitt/angzarr/client/go/proto/examples"
+	pb "github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/angzarr/v1"
+	"github.com/benjaminabbitt/angzarr/client/go/proto/angzarr_client/proto/examples/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -111,6 +111,13 @@ func NewHand(eventBook *pb.EventBook) *Hand {
 	h.Handles(h.HandleRequestDraw)
 	h.Handles(h.HandleRevealCards)
 	h.HandlesMulti(h.HandleAwardPot)
+	// Phase I-Go: new handlers per spec MED-EX-2.3.1 (Py-canonical hand
+	// surface). StartActionClock + DeclareAction + PullBackPriorChip +
+	// CorrectIllegalBet.
+	h.Handles(h.HandleStartActionClock)
+	h.Handles(h.HandleDeclareAction)
+	h.Handles(h.HandlePullBackPriorChip)
+	h.Handles(h.HandleCorrectIllegalBet)
 
 	return h
 }
