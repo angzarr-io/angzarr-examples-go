@@ -1,53 +1,25 @@
-> **⚠️ Out of Date:** This repository is currently out of date. Primary development focus is on the **Rust** and **Python** implementations. The author will get back to updating this, but if you need it sooner, please [open an issue](https://github.com/angzarr-io/angzarr/issues) or contact the author directly.
-
 # angzarr-examples-go
 
-Example implementations demonstrating Angzarr event sourcing patterns in Go.
+Example implementations demonstrating Angzarr event sourcing patterns in Go. See the [Angzarr documentation](https://angzarr.io/) for more information.
 
-## Examples
+> The poker example has been retired. A blackjack example is coming; its spec lives in [angzarr-project](https://github.com/angzarr-io/angzarr-project) under `proto/io/angzarr/examples/v1` and `features/example/blackjack*`.
 
-- **player/**: Player aggregate (functional style)
-- **table/**: Table aggregate (object-oriented style)
-- **hand/**: Hand aggregate
-- **pmg-hand-flow/**: Process manager coordinating hand workflow
-- **prj-output/**: Projector for output events
-- **prj-cloudevents/**: CloudEvents projector
+## Development
 
-## Prerequisites
-
-- Go 1.21+
-- Buf CLI for proto generation
-- Kind (for Kubernetes deployment)
-
-## Building
+Install git hooks (requires [lefthook](https://github.com/evilmartians/lefthook)):
 
 ```bash
-# Generate protos
-buf generate
-
-# Build all binaries
-go build -o player/agg-player ./player/agg
-go build -o table/agg-table ./table/agg
-# ... etc
+lefthook install
 ```
 
-## Running
-
-### Standalone Mode
-
 ```bash
-# Run with standalone runtime
-./player/agg-player --standalone
-```
-
-### Kubernetes Mode
-
-```bash
-# Deploy to Kind cluster
-skaffold run
+just -l              # List all available recipes
+just build           # Build (runs in the devcontainer image)
+just test            # Run tests
+just lint            # Lint
+just fmt             # Format
 ```
 
 ## License
 
 BSD-3-Clause
-
