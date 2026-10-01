@@ -1,4 +1,4 @@
-# Go poker examples
+# Go examples
 #
 # Container Overlay Pattern:
 # --------------------------
@@ -37,10 +37,17 @@ _container +ARGS: _build-image
     if [ "${DEVCONTAINER:-}" = "true" ]; then
         just {{ARGS}}
     else
+        # Mount the shared git dir at its host path so linked worktrees
+        # (whose .git file points there) resolve inside the container.
+        git_common="$(git rev-parse --path-format=absolute --git-common-dir)"
         docker run --rm --network=host \
             -v "{{ROOT}}:/workspace:Z" \
+            -v "${git_common}:${git_common}" \
             -v "{{ROOT}}/justfile.container:/workspace/justfile:ro" \
             -w /workspace \
+            -e GIT_CONFIG_COUNT=1 \
+            -e GIT_CONFIG_KEY_0=safe.directory \
+            -e GIT_CONFIG_VALUE_0='*' \
             {{IMAGE}} just {{ARGS}}
     fi
 
@@ -63,14 +70,6 @@ fmt:
 
 lint:
     just _container lint
-
-# Run poker in standalone mode (host - needs Rust)
-run: build
-    mkdir -p "{{ROOT}}/data"
-    cd "{{ROOT}}" && cargo run \
-        --bin angzarr-standalone \
-        --features standalone,sqlite \
-        -- --config standalone.yaml
 
 clean:
     rm -rf "{{ROOT}}/data"
