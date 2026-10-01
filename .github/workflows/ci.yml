@@ -41,6 +41,8 @@ jobs:
     needs: [submodules]
     container:
       image: ghcr.io/angzarr-io/angzarr-go:9e07ae0@sha256:b57cce65c7bc14aaa67845d94d0eb3c7f7bddae43190299ec8f02bb8e92ee6d8
+      # The image's default user cannot write the runner's mounted dirs.
+      options: --user root
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
