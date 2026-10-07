@@ -1,6 +1,9 @@
-# Go poker examples - container version
+# Go examples - container version
 # This file is mounted as 'justfile' inside the container
 # Also used directly in CI container jobs
+#
+# Go recipes are no-ops until the repo has a go.mod (the blackjack
+# example port adds one).
 
 set shell := ["bash", "-c"]
 
@@ -9,23 +12,28 @@ ROOT := `git rev-parse --show-toplevel`
 default:
     @just --list
 
+# Run a command when the repo has a Go module; skip otherwise
+[private]
+_go +ARGS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -f "{{ROOT}}/go.mod" ]; then
+        echo "No Go module yet; skipping '{{ARGS}}'"
+        exit 0
+    fi
+    cd "{{ROOT}}" && {{ARGS}}
+
 # Generate protos for client library (required before build)
-proto-gen:
-    cd {{ROOT}} && buf generate
+proto-gen: (_go "buf" "generate")
 
-build: proto-gen
-    go mod tidy && go build ./...
+build: proto-gen (_go "go" "build" "./...")
 
-test-unit: proto-gen
-    go mod tidy && go test -v ./tests/ -timeout=120s
+test-unit: proto-gen (_go "go" "test" "-v" "./..." "-timeout=120s")
 
-test-acceptance: proto-gen
-    PLAYER_URL="${PLAYER_URL:-localhost:1310}" go test -v -tags=acceptance ./tests/ -timeout=600s
+test-acceptance: proto-gen (_go "go" "test" "-v" "-tags=acceptance" "./..." "-timeout=600s")
 
 test: test-unit test-acceptance
 
-fmt:
-    gofmt -w .
+fmt: (_go "gofmt" "-w" ".")
 
-lint:
-    golangci-lint run
+lint: (_go "golangci-lint" "run")

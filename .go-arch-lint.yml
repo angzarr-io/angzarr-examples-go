@@ -1,0 +1,50 @@
+# Architecture rules for the Go examples, checked by go-arch-lint
+# (`just archlint`; pre-commit and CI run it once the repo has a go.mod).
+#
+# Layout, one binary per component:
+#   <domain>/agg            aggregate host: binary entry point, transport,
+#                           configuration; registers the domain logic
+#   <domain>/agg/handlers   aggregate domain logic: command handlers and
+#                           state; independent of hosting and transport
+#   <domain>/saga-<target>  sagas: translate one domain's events into another
+#                           domain's commands
+#   pmg-<name>              process managers: cross-domain coordination
+#   prj-<name>              projectors: read models built from events
+#
+# Only an aggregate's own host imports its domain logic: sagas and process
+# managers never reach into aggregate internals, and projectors never import
+# aggregates. Components meet through the generated protobuf messages
+# (angzarr-client-go) and the angzarr bindings, never through each other's
+# packages. Domain logic may use nothing beyond protobuf and angzarr.
+version: 3
+
+allow:
+  depOnAnyVendor: false
+
+# Submodules are not examples code.
+exclude:
+  - angzarr-client-go
+  - angzarr-project
+
+vendors:
+  protobuf: { in: google.golang.org/protobuf/** }
+  angzarr: { in: github.com/angzarr-io/** }
+
+components:
+  agg-host: { in: "*/agg" }
+  agg-logic: { in: "*/agg/handlers/**" }
+  saga: { in: "*/saga-*/**" }
+  pmg: { in: pmg-*/** }
+  prj: { in: prj-*/** }
+
+deps:
+  agg-host:
+    mayDependOn: [agg-logic]
+    anyVendorDeps: true
+
+  agg-logic:
+    canUse: [protobuf, angzarr]
+
+  saga: { anyVendorDeps: true }
+  pmg: { anyVendorDeps: true }
+  prj: { anyVendorDeps: true }
