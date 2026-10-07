@@ -18,6 +18,7 @@ just build           # Build (runs in the devcontainer image)
 just test            # Run tests
 just lint            # Lint
 just fmt             # Format
+just archlint        # Check package layering (.go-arch-lint.yml)
 ```
 
 ## License

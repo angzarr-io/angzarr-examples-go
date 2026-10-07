@@ -22,3 +22,6 @@ pre-commit:
       run: env -u GIT_DIR -u GIT_INDEX_FILE just check-submodules-clean
     scan-secrets:
       run: just scan-secrets
+    archlint:
+      glob: "*.{go,mod,yml}"
+      run: just archlint

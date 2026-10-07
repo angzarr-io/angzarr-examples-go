@@ -71,5 +71,24 @@ fmt:
 lint:
     just _container lint
 
+# Pinned go-arch-lint image for archlint. Bumps are deliberate commits here.
+GO_ARCH_LINT_IMAGE := "fe3dback/go-arch-lint:release-v1.19.0@sha256:9f4fb1216095becb37d889cc471ee8d93f7b5e5d531bde83571415013eca3fa1"
+
+# Check package dependencies against the layer rules in .go-arch-lint.yml:
+# aggregate domain logic is free of hosting and transport, and sagas,
+# process managers and projectors never import aggregate internals.
+# Skips until the repo has a go.mod.
+archlint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -f "{{ROOT}}/go.mod" ]; then
+        echo "No Go module yet; skipping archlint"
+        exit 0
+    fi
+    runtime="$(command -v docker || command -v podman || true)"
+    test -n "$runtime" || { echo "archlint: no container runtime (docker/podman) found" >&2; exit 1; }
+    "$runtime" run --rm --network none -v "{{ROOT}}:/src:ro" "{{GO_ARCH_LINT_IMAGE}}" \
+        check --project-path /src --output-color=false
+
 clean:
     rm -rf "{{ROOT}}/data"
