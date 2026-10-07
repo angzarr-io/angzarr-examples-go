@@ -20,3 +20,5 @@ pre-commit:
       # git exports GIT_DIR/GIT_INDEX_FILE to hooks in linked worktrees,
       # which would make `git -C <submodule>` inspect the parent instead.
       run: env -u GIT_DIR -u GIT_INDEX_FILE just check-submodules-clean
+    scan-secrets:
+      run: just scan-secrets
