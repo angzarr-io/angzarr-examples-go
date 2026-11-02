@@ -6,6 +6,8 @@
 
 Example implementations demonstrating Angzarr event sourcing patterns in Go.
 
+> **Status: intentionally lagging.** These examples are temporarily descoped: the project grew too fast in scope, so work is focused on the Rust and Python clients. They are behind the current angzarr stack and may not build against it. They will be brought back up to date once Rust and Python are fully operational.
+
 ## Examples
 
 - **player/**: Player aggregate (functional style)
