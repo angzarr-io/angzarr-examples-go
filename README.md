@@ -44,6 +44,8 @@ go build -o table/agg-table ./table/agg
 
 ### Kubernetes Mode
 
+Note: the Kubernetes deployment here uses angzarr core's distributed runtime, which is retired for now; it is preserved at the tag [`distributed-runtime-final`](https://github.com/angzarr-io/angzarr/tree/distributed-runtime-final) and will return.
+
 ```bash
 # Deploy to Kind cluster
 skaffold run
